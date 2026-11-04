@@ -1,0 +1,40 @@
+# Local/pilot stack: MySQL + API + web. Migrations run automatically when the API container starts.
+# Open http://localhost:3000 (web; nginx proxies /api to the api service).
+services:
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:-carebridge}
+      MYSQL_USER: ${DB_USER:-carebridge}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    ports: ['127.0.0.1:3306:3306']
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: ./apps/api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_HOST: db # inside Compose the database is the "db" service, not 127.0.0.1
+    ports: ['4000:4000']
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build: ./apps/web
+    restart: unless-stopped
+    ports: ['3000:80']
+    depends_on:
+      - api
+
+volumes:
+  mysql_data:

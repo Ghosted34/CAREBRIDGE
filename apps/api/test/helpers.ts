@@ -1,0 +1,133 @@
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import supertest from 'supertest';
+import { createApp } from '../src/app.js';
+import { env } from '../src/config/env.js';
+import { pool, type Result, type Row } from '../src/db/pool.js';
+import type { ProviderRole, Role } from '../src/types.js';
+
+export const api = supertest(createApp());
+
+const TABLES = [
+  'audit_logs',
+  'notifications',
+  'patient_consents',
+  'payments',
+  'service_estimates',
+  'clinical_referrals',
+  'appointments',
+  'provider_offers',
+  'care_requests',
+  'provider_users',
+  'providers',
+  'users',
+];
+
+export async function resetDb() {
+  await pool.query('SET FOREIGN_KEY_CHECKS = 0');
+  for (const t of TABLES) await pool.query(`TRUNCATE TABLE ${t}`);
+  await pool.query('SET FOREIGN_KEY_CHECKS = 1');
+}
+
+let seq = 0;
+export const PASSWORD = 'correct-horse-battery';
+const HASH = bcrypt.hashSync(PASSWORD, 4);
+
+export interface TestUser {
+  id: number;
+  role: Role;
+  token: string;
+  auth: { Authorization: string };
+}
+
+export async function makeUser(role: Role = 'patient', status = 'active'): Promise<TestUser> {
+  seq += 1;
+  const [r] = await pool.execute<Result>(
+    `INSERT INTO users(full_name, email, phone, password_hash, role, status) VALUES (?, ?, ?, ?, ?, ?)`,
+    [
+      `Test ${role} ${seq}`,
+      `user${seq}@test.local`,
+      `+23480${String(seq).padStart(8, '0')}`,
+      HASH,
+      role,
+      status,
+    ],
+  );
+  const token = jwt.sign({ role }, env.JWT_SECRET, {
+    subject: String(r.insertId),
+    expiresIn: '1h',
+  });
+  return { id: r.insertId, role, token, auth: { Authorization: `Bearer ${token}` } };
+}
+
+export async function makeProvider(
+  o: { verified?: boolean; specialties?: string[]; city?: string } = {},
+) {
+  seq += 1;
+  const [r] = await pool.execute<Result>(
+    `INSERT INTO providers(legal_name, display_name, provider_type, registration_number,
+       verification_status, status, city, address, specialties)
+     VALUES (?, ?, 'clinic', ?, ?, 'active', ?, 'Test address, Lagos', ?)`,
+    [
+      `Clinic ${seq} Ltd`,
+      `Clinic ${seq}`,
+      `REG-${seq}`,
+      o.verified === false ? 'pending' : 'verified',
+      o.city ?? 'Lagos',
+      JSON.stringify(o.specialties ?? ['dentistry']),
+    ],
+  );
+  return r.insertId;
+}
+
+export async function makeStaff(providerId: number, providerRole: ProviderRole = 'owner') {
+  const user = await makeUser('provider_staff');
+  await pool.execute(
+    'INSERT INTO provider_users(provider_id, user_id, provider_role) VALUES (?, ?, ?)',
+    [providerId, user.id, providerRole],
+  );
+  return user;
+}
+
+export const requestBody = (over: Record<string, unknown> = {}) => ({
+  specialty: 'dentistry',
+  service_type: 'root canal assessment',
+  description: 'Persistent pain in a lower molar for three days.',
+  preferred_city: 'Lagos',
+  urgency: 'soon',
+  has_emergency_symptoms: false,
+  ...over,
+});
+
+export async function makeRequest(patient: TestUser, over: Record<string, unknown> = {}) {
+  const res = await api.post('/api/v1/requests').set(patient.auth).send(requestBody(over));
+  if (res.status !== 201)
+    throw new Error(`makeRequest failed: ${res.status} ${JSON.stringify(res.body)}`);
+  return res.body.data.id as number;
+}
+
+/** Patient request → provider offer → patient accepts. Returns ids for booking tests. */
+export async function acceptedRequest() {
+  const patient = await makeUser('patient');
+  const providerId = await makeProvider();
+  const staff = await makeStaff(providerId, 'owner');
+  const requestId = await makeRequest(patient);
+  const offer = await api
+    .post(`/api/v1/requests/${requestId}/offers`)
+    .set(staff.auth)
+    .send({ provider_id: providerId });
+  await api.post(`/api/v1/offers/${offer.body.data.id}/accept`).set(patient.auth);
+  return { patient, providerId, staff, requestId, offerId: offer.body.data.id as number };
+}
+
+export async function auditActions(entityType: string, entityId: number) {
+  const [rows] = await pool.execute<Row[]>(
+    'SELECT action FROM audit_logs WHERE entity_type = ? AND entity_id = ? ORDER BY id',
+    [entityType, entityId],
+  );
+  return rows.map((r) => r.action as string);
+}
+
+// Fixed base (tomorrow 00:00 UTC + 1 day) so separate calls produce exactly adjacent times.
+const BASE = Math.ceil(Date.now() / 86_400_000) * 86_400_000 + 86_400_000;
+export const inHours = (h: number) => new Date(BASE + h * 3600_000).toISOString();
