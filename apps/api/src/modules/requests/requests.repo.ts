@@ -124,3 +124,33 @@ export async function listAssigned(
   );
   return rows;
 }
+
+/** IDs of a patient's requests still waiting for a provider (submitted/matching), locked for update. */
+export async function openIdsForPatient(db: Db, patientId: number) {
+  const [rows] = await db.execute<Row[]>(
+    `SELECT id FROM care_requests
+      WHERE patient_user_id = ? AND status IN ('submitted','matching') FOR UPDATE`,
+    [patientId],
+  );
+  return rows.map((r) => r.id as number);
+}
+
+/** Verified, active providers that would see this request in their queue (same city, offers the specialty). */
+export async function matchingProviders(db: Db, requestId: number) {
+  const [rows] = await db.execute<Row[]>(
+    `SELECT p.id, p.display_name FROM providers p JOIN care_requests cr ON cr.id = ?
+      WHERE p.verification_status = 'verified' AND p.status = 'active' AND p.accepting_referrals = TRUE
+        AND p.city = cr.preferred_city AND JSON_CONTAINS(p.specialties, JSON_QUOTE(cr.specialty))`,
+    [requestId],
+  );
+  return rows.map((r) => ({ id: r.id as number, name: r.display_name as string }));
+}
+
+/** Providers with an unanswered offer on the request. */
+export async function openOfferProviderIds(db: Db, requestId: number) {
+  const [rows] = await db.execute<Row[]>(
+    `SELECT provider_id FROM provider_offers WHERE care_request_id = ? AND status = 'offered'`,
+    [requestId],
+  );
+  return rows.map((r) => r.provider_id as number);
+}

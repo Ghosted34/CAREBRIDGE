@@ -2,6 +2,10 @@
 import { qs, request } from './client';
 import type {
   AdminProvider,
+  AppNotification,
+  ConsentStatus,
+  ConsentType,
+  Policy,
   AdminUser,
   Appointment,
   AppointmentType,
@@ -38,8 +42,34 @@ export const api = {
     phone: string;
     password: string;
     role: 'patient' | 'provider_staff';
+    accept_terms: boolean;
+    accept_privacy: boolean;
+    marketing_opt_in: boolean;
   }) => post<Envelope<{ id: number; role: string; status: UserStatus }>>('/auth/register', body),
   me: () => get<Envelope<Me>>('/me'),
+
+  // notifications (in-app inbox)
+  notifications: (p: { unread?: boolean } = {}) =>
+    get<ListEnvelope<AppNotification>>(
+      `/notifications${qs({ unread: p.unread ? 'true' : undefined })}`,
+    ),
+  unreadCount: () => get<Envelope<{ count: number }>>('/notifications/unread-count'),
+  markNotificationRead: (id: number) => post<Envelope<unknown>>(`/notifications/${id}/read`),
+  markAllNotificationsRead: () => post<Envelope<{ updated: number }>>('/notifications/read-all'),
+
+  // consents
+  policies: () => get<Envelope<Policy[]>>('/consents/policies'),
+  myConsents: () => get<Envelope<ConsentStatus[]>>('/consents'),
+  decideConsent: (
+    consent_type: ConsentType,
+    granted: boolean,
+    source: 'settings' | 'request_form' = 'settings',
+  ) =>
+    post<Envelope<{ consents: ConsentStatus[]; withdrawn_requests: number[] }>>('/consents', {
+      consent_type,
+      granted,
+      source,
+    }),
 
   // public directory
   providers: (p: { specialty?: string; city?: string } = {}) =>

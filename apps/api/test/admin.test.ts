@@ -40,6 +40,8 @@ describe('admin onboarding', () => {
       phone: '+2348099999999',
       password: PASSWORD,
       role: 'provider_staff',
+      accept_terms: true,
+      accept_privacy: true,
     });
     const staffId = reg.body.data.id;
     const pending = await api.get('/api/v1/admin/users?status=pending').set(admin.auth);

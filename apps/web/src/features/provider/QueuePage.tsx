@@ -140,15 +140,22 @@ function OfferModal({
         </Notice>
       ) : (
         <form className="form" onSubmit={submit}>
-          <Field label="Offer on behalf of">
-            <select value={chosen} onChange={(e) => setProviderId(Number(e.target.value))}>
-              {providers.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </Field>
+          {providers.length === 1 ? (
+            // One clinic: nothing to choose, so just say who the offer is from.
+            <p className="small">
+              Offering as <strong>{providers[0]!.name}</strong>
+            </p>
+          ) : (
+            <Field label="Offer on behalf of">
+              <select value={chosen} onChange={(e) => setProviderId(Number(e.target.value))}>
+                {providers.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
           <Field
             label="Message to the patient"
             hint="Availability, what to expect at the first visit. No pricing promises."

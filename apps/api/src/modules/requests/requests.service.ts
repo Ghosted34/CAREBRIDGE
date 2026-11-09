@@ -8,7 +8,9 @@ import { assertTransition } from '../../lib/stateMachine.js';
 import type { Pagination } from '../../lib/validate.js';
 import * as offersRepo from '../offers/offers.repo.js';
 import * as appointmentsRepo from '../appointments/appointments.repo.js';
+import { assertConsents } from '../consents/consents.service.js';
 import type { AssignedQuery, CreateRequestBody, QueueQuery } from './requests.schema.js';
+import * as notifications from '../notifications/notifications.service.js';
 import * as repo from './requests.repo.js';
 
 /**
@@ -29,6 +31,8 @@ export async function create(c: Ctx, input: z.infer<typeof CreateRequestBody>) {
     });
     throw new AppError(422, 'EMERGENCY_REDIRECT', EMERGENCY_GUIDANCE);
   }
+  // Sharing a request with providers needs current terms, privacy and data-sharing consent.
+  await assertConsents(pool, c.user.id);
   return withTransaction(async (tx) => {
     const id = await repo.insert(tx, { ...input, patient_user_id: c.user.id });
     await audit(tx, {
@@ -38,6 +42,18 @@ export async function create(c: Ctx, input: z.infer<typeof CreateRequestBody>) {
       entityId: id,
       ip: c.ip,
     });
+    // Tell staff of every clinic whose queue this request appears in.
+    for (const provider of await repo.matchingProviders(tx, id)) {
+      const staff = await notifications.providerStaffIds(tx, provider.id, [
+        'owner',
+        'clinician',
+        'scheduler',
+      ]);
+      await notifications.notify(tx, staff, 'new_request', {
+        request_id: id,
+        provider: provider.name,
+      });
+    }
     return { id, status: 'submitted' };
   });
 }
@@ -72,6 +88,9 @@ export async function cancel(c: Ctx, id: number) {
     const owns = request && c.user.role === 'patient' && request.patient_user_id === c.user.id;
     if (!request || !(owns || isPlatformStaff(c.user))) throw AppError.notFound('Care request');
     assertTransition('care_request', request.status, 'cancelled');
+    // Clinics that were involved (assigned, or waiting on an answer to their offer) get told.
+    const involved = new Set(await repo.openOfferProviderIds(tx, id));
+    if (request.assigned_provider_id) involved.add(request.assigned_provider_id);
     await repo.setStatus(tx, id, 'cancelled');
     const expired = await offersRepo.expireOpenForRequest(tx, id);
     const cancelledAppointments = await appointmentsRepo.cancelActiveForRequest(tx, id);
@@ -83,6 +102,13 @@ export async function cancel(c: Ctx, id: number) {
       ip: c.ip,
       metadata: { expired_offers: expired, cancelled_appointments: cancelledAppointments },
     });
+    for (const providerId of involved) {
+      const staff = await notifications.providerStaffIds(tx, providerId);
+      await notifications.notify(tx, staff, 'request_cancelled', {
+        request_id: id,
+        provider: await notifications.providerName(tx, providerId),
+      });
+    }
     return { id, status: 'cancelled' };
   });
 }
@@ -117,6 +143,10 @@ export async function progress(c: Ctx, id: number, step: JourneyStep) {
       entityId: id,
       ip: c.ip,
       metadata: { from: request.status, to },
+    });
+    await notifications.notify(tx, [request.patient_user_id], 'request_progress', {
+      request_id: id,
+      step: to,
     });
     return { id, status: to };
   });

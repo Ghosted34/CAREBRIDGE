@@ -19,6 +19,8 @@ code does today and what must happen before launch. It is not legal advice; get 
 | Transport/browser | helmet on the API; nginx CSP (`default-src 'self'`, no inline scripts), `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, `frame-ancestors 'none'` |
 | Abuse | Rate limits: 300/15 min per IP, 20/15 min on auth endpoints |
 | Safety | Emergency symptoms are refused with guidance and never queued |
+| Consent | Terms/privacy at sign-up; data-sharing consent (current version) before a request reaches clinics; append-only history with source and IP; withdrawing data sharing pulls open requests |
+| Notifications | No clinical text in any notification (payload keys checked in code, tested); generic SMS wording; addresses masked in logs |
 | Config | Env validated at start-up; API won't start with a short `JWT_SECRET` |
 
 ## Known trade-offs
@@ -33,8 +35,9 @@ code does today and what must happen before launch. It is not legal advice; get 
 ## Before launch
 
 - [ ] OTP/MFA for provider staff, operators and admins; phone/email verification for patients.
+      *Decided 2026-11-09:* staff get a one-time code on a **new device** only (not every sign-in). Deferred — built later.
 - [ ] Password reset flow.
-- [ ] Consent capture at sign-up and before sharing with a provider (`patient_consents` table exists; endpoints don't).
+- [x] Consent capture at sign-up and before sharing with a provider. Policy wording still needs legal review.
 - [ ] Encrypted object storage with signed URLs for any images/documents — never in MySQL text columns.
 - [ ] Encryption at rest for the database volume and backups.
 - [ ] Data retention and deletion policy; a process for data-subject requests (access, correction, deletion).

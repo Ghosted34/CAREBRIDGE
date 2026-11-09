@@ -2,6 +2,7 @@ import { Link, Route, Routes } from 'react-router';
 import { RequireRole } from './auth/RequireRole';
 import { Layout } from './components/Layout';
 import { EmptyState } from './components/ui';
+import { NotificationsPage } from './features/account/NotificationsPage';
 import { OverviewPage } from './features/admin/OverviewPage';
 import { ProvidersAdminPage } from './features/admin/ProvidersAdminPage';
 import { UsersPage } from './features/admin/UsersPage';
@@ -10,6 +11,8 @@ import { RegisterPage } from './features/auth/RegisterPage';
 import { NewRequestPage } from './features/patient/NewRequestPage';
 import { PatientAppointmentsPage } from './features/patient/PatientAppointmentsPage';
 import { PatientHomePage } from './features/patient/PatientHomePage';
+import { PrivacyPage } from './features/patient/PrivacyPage';
+import { PoliciesPage } from './features/public/PoliciesPage';
 import { RequestDetailPage } from './features/patient/RequestDetailPage';
 import { JourneysPage } from './features/provider/JourneysPage';
 import { ProviderAppointmentsPage } from './features/provider/ProviderAppointmentsPage';
@@ -31,6 +34,23 @@ export function App() {
       <Route element={<Layout />}>
         <Route index element={<HomePage />} />
         <Route path="providers" element={<ProvidersPage />} />
+        <Route path="policies" element={<PoliciesPage />} />
+        <Route
+          path="notifications"
+          element={
+            <RequireRole roles={['patient', 'provider_staff', 'operator', 'admin']}>
+              <NotificationsPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="account/privacy"
+          element={
+            <RequireRole roles={['patient', 'provider_staff', 'operator', 'admin']}>
+              <PrivacyPage />
+            </RequireRole>
+          }
+        />
         <Route path="login" element={<LoginPage />} />
         <Route path="register" element={<RegisterPage />} />
 

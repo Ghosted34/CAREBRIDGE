@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { ApiError } from '../../api/client';
@@ -27,16 +27,34 @@ export function NewRequestPage() {
     urgency: 'routine' as Urgency,
   });
   const [emergency, setEmergency] = useState<boolean | null>(null);
+  const [agreed, setAgreed] = useState(false);
+
+  // Consents needed to share a request (data sharing, plus terms/privacy if their version changed).
+  const policies = useQuery({ queryKey: ['policies'], queryFn: api.policies, staleTime: Infinity });
+  const consents = useQuery({ queryKey: ['consents'], queryFn: api.myConsents });
+  const required = new Set(
+    (policies.data?.data ?? []).filter((p) => p.required_for_requests).map((p) => p.type),
+  );
+  const missing = (consents.data?.data ?? []).filter((c) => required.has(c.type) && !c.up_to_date);
+  const missingPolicies = (policies.data?.data ?? []).filter((p) =>
+    missing.some((m) => m.type === p.type),
+  );
 
   const create = useMutation({
-    mutationFn: () =>
-      api.createRequest({
+    mutationFn: async () => {
+      // Record consent first (only when the patient ticked the box), then send the request.
+      if (emergency === false) {
+        for (const m of missing) await api.decideConsent(m.type, true, 'request_form');
+      }
+      return api.createRequest({
         ...form,
         specialty: 'dentistry',
         has_emergency_symptoms: emergency === true,
-      }),
+      });
+    },
     onSuccess: ({ data }) => {
       void queryClient.invalidateQueries({ queryKey: ['requests'] });
+      void queryClient.invalidateQueries({ queryKey: ['consents'] });
       navigate(`/patient/requests/${data.id}`, { replace: true, state: { created: true } });
     },
   });
@@ -145,9 +163,40 @@ export function NewRequestPage() {
               </select>
             </Field>
           </div>
+          {missingPolicies.length > 0 && (
+            <div className="consent-box">
+              <h3>Before we share your request</h3>
+              {missingPolicies.map((p) => (
+                <p key={p.type} className="small">
+                  <strong>{p.title}.</strong> {p.summary}
+                </p>
+              ))}
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={agreed}
+                  onChange={(e) => setAgreed(e.target.checked)}
+                />
+                <span>
+                  I agree{missingPolicies.length > 1 ? ' to the above' : ''}.{' '}
+                  <Link to="/policies" target="_blank">
+                    Read more
+                  </Link>
+                </span>
+              </label>
+            </div>
+          )}
           {Object.keys(fieldErrors).length === 0 && <ErrorNote error={create.error} />}
           <div className="btn-row">
-            <Button type="submit" busy={create.isPending} disabled={emergency === null}>
+            <Button
+              type="submit"
+              busy={create.isPending}
+              disabled={
+                emergency === null ||
+                consents.isPending ||
+                (missingPolicies.length > 0 && emergency === false && !agreed)
+              }
+            >
               Send request
             </Button>
             <span className="muted small">

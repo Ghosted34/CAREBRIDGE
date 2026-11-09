@@ -1,11 +1,12 @@
 # Deployment
 
-The pilot runs as three containers from `docker-compose.yml`:
+The pilot runs as four containers from `docker-compose.yml`:
 
 | Service | Image | Port | Notes |
 |---|---|---|---|
 | `db` | `mysql:8.4` | 127.0.0.1:3306 | data in the `mysql_data` volume |
 | `api` | built from `apps/api/Dockerfile` | 4000 | runs `migrate up` then the server on every start |
+| `worker` | same image as `api` | — | sends queued SMS/email; starts once the API is healthy |
 | `web` | built from `apps/web/Dockerfile` (nginx) | 3000 → 80 | serves the SPA, proxies `/api` + `/health` to `api` |
 
 Put a TLS-terminating reverse proxy (or load balancer) in front of `web` and expose only 443. The API
@@ -31,6 +32,16 @@ Set in the root `.env` (read by Compose). The API validates them at start-up and
 | `LOG_LEVEL` | | `info` | `fatal…trace`, `silent` |
 | `BCRYPT_ROUNDS` | | `12` | password hashing cost |
 | `SEED_PASSWORD` | | `CareBridge!2026` | dev seed only |
+| `NOTIFY_SMS_PROVIDER` | | `log` | `log`, `termii` or `none` — see [notifications.md](notifications.md) |
+| `NOTIFY_EMAIL_PROVIDER` | | `log` | `log`, `smtp` or `none` |
+| `TERMII_API_KEY` | if `termii` | — | from the Termii dashboard |
+| `TERMII_BASE_URL` | if `termii` | — | your account's base URL from the Termii dashboard |
+| `TERMII_SENDER_ID` | if `termii` | — | approved sender ID, 3–11 characters |
+| `TERMII_CHANNEL` | | `dnd` | `dnd` (reaches DND numbers; ask Termii to enable) or `generic` |
+| `SMTP_URL` | if `smtp` | — | e.g. `smtps://user:pass@smtp.example.com:465` |
+| `EMAIL_FROM` | | `CareBridge <no-reply@carebridge.local>` | sender address (smtp) |
+| `APP_URL` | | `http://localhost:3000` | public web address, used for links in emails |
+| `WORKER_POLL_MS` | | `5000` | how often an idle worker checks for messages |
 
 Generate a secret: `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`.
 
@@ -63,7 +74,8 @@ safe for the data now in the tables; otherwise restore from the backup.
 - [ ] Strong, unique `JWT_SECRET`, DB and root passwords; `.env` readable only by the deploy user.
 - [ ] `NODE_ENV=production`; no seed data in the production database.
 - [ ] Backups running and a restore tested.
-- [ ] Monitoring on `/health`, container restarts, disk space, MySQL.
+- [ ] Monitoring on `/health`, container restarts, disk space, MySQL, and notifications stuck in `failed`.
+- [ ] Termii configured (approved sender ID, DND route enabled, credit) and SMTP for email — [notifications.md](notifications.md).
 - [ ] Log shipping with retention rules (logs already redact tokens, passwords and clinical text).
 - [ ] Emergency guidance text approved by clinical governance.
 - [ ] Items in [security.md → Before launch](security.md#before-launch) closed or explicitly accepted.

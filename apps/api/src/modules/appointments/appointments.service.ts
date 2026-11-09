@@ -8,6 +8,7 @@ import { assertTransition } from '../../lib/stateMachine.js';
 import type { Pagination } from '../../lib/validate.js';
 import * as requestsRepo from '../requests/requests.repo.js';
 import type { BookAppointmentBody } from './appointments.schema.js';
+import * as notifications from '../notifications/notifications.service.js';
 import * as repo from './appointments.repo.js';
 
 const BOOKABLE_REQUEST_STATUSES = [
@@ -69,6 +70,29 @@ export async function book(c: Ctx, input: z.infer<typeof BookAppointmentBody>) {
       ip: c.ip,
       metadata: { care_request_id: request.id, provider_id: providerId },
     });
+    // Tell the other side: the clinic when the patient booked, the patient when staff booked.
+    const notice = {
+      request_id: request.id,
+      appointment_id: id,
+      provider: await notifications.providerName(tx, providerId),
+      starts_at: start.toISOString(),
+    };
+    if (c.user.role === 'patient') {
+      const staff = await notifications.providerStaffIds(tx, providerId, [
+        'owner',
+        'clinician',
+        'scheduler',
+        'receptionist',
+      ]);
+      await notifications.notify(tx, staff, 'appointment_booked_provider', notice);
+    } else {
+      await notifications.notify(
+        tx,
+        [request.patient_user_id],
+        'appointment_booked_patient',
+        notice,
+      );
+    }
     return { id, provider_id: providerId, status: 'booked' };
   });
 }
@@ -100,6 +124,27 @@ async function changeStatus(c: Ctx, id: number, to: ApptStatus, action: string) 
       entityId: id,
       ip: c.ip,
     });
+    const notice = {
+      request_id: appt.care_request_id as number,
+      appointment_id: id,
+      provider: appt.provider as string,
+      starts_at: new Date(appt.starts_at).toISOString(),
+    };
+    if (to === 'confirmed') {
+      await notifications.notify(tx, [appt.patient_user_id], 'appointment_confirmed', notice);
+    } else if (to === 'cancelled') {
+      if (isOwnPatient) {
+        const staff = await notifications.providerStaffIds(tx, appt.provider_id);
+        await notifications.notify(tx, staff, 'appointment_cancelled_provider', notice);
+      } else {
+        await notifications.notify(
+          tx,
+          [appt.patient_user_id],
+          'appointment_cancelled_patient',
+          notice,
+        );
+      }
+    }
     return { id, status: to };
   });
 }

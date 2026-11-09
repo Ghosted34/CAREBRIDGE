@@ -11,6 +11,7 @@ Start here. Everything about how CareBridge is built, run and changed lives in t
 | [data-model.md](data-model.md) | …touch the database: tables, relationships, status machines. |
 | [migrations.md](migrations.md) | …change the schema: creating, applying, rolling back, troubleshooting. |
 | [deployment.md](deployment.md) | …run CareBridge on a server: Docker, env vars, launch checklist. |
+| [notifications.md](notifications.md) | …set up SMS/email (Termii, SMTP) or add another provider. |
 | [security.md](security.md) | …handle patient data, auth, or anything privacy-related. |
 | [roadmap.md](roadmap.md) | …want to know what's left to build and what blocks launch. |
 | [decisions/](decisions/) | …want to know *why* something is the way it is (ADRs). |
@@ -21,3 +22,4 @@ Start here. Everything about how CareBridge is built, run and changed lives in t
 - [0001 — API foundation and conventions](decisions/0001-foundation.md)
 - [0002 — Web app stack and structure](decisions/0002-web-app.md)
 - [0003 — Migration strategy](decisions/0003-migrations.md)
+- [0004 — Notifications](decisions/0004-notifications.md)

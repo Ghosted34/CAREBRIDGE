@@ -6,6 +6,7 @@ import { AppError } from '../../lib/errors.js';
 import type { Ctx } from '../../lib/http.js';
 import { assertTransition, canTransition } from '../../lib/stateMachine.js';
 import * as requestsRepo from '../requests/requests.repo.js';
+import * as notifications from '../notifications/notifications.service.js';
 import * as repo from './offers.repo.js';
 
 /** A provider (or an operator on its behalf) offers to take on a care request. */
@@ -62,6 +63,10 @@ export async function create(
       ip: c.ip,
       metadata: { care_request_id: requestId, provider_id: input.provider_id },
     });
+    await notifications.notify(tx, [request.patient_user_id], 'offer_received', {
+      request_id: requestId,
+      provider: await notifications.providerName(tx, input.provider_id),
+    });
     return { id: offerId, status: 'offered' };
   });
 }
@@ -104,6 +109,20 @@ export async function respond(c: Ctx, offerId: number, decision: 'accepted' | 'd
       ip: c.ip,
       metadata: { care_request_id: request.id, provider_id: offer.provider_id },
     });
+    const notice = {
+      request_id: request.id,
+      provider: await notifications.providerName(tx, offer.provider_id),
+    };
+    if (decision === 'accepted') {
+      const staff = await notifications.providerStaffIds(tx, offer.provider_id, [
+        'owner',
+        'clinician',
+        'scheduler',
+      ]);
+      await notifications.notify(tx, staff, 'offer_accepted', notice);
+    } else {
+      await notifications.notify(tx, [offer.offered_by_user_id], 'offer_declined', notice);
+    }
     return { id: offerId, status: decision };
   });
 }

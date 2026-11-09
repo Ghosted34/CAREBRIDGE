@@ -7,6 +7,8 @@ import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { adminRouter } from './modules/admin/admin.routes.js';
 import { appointmentsRouter } from './modules/appointments/appointments.routes.js';
 import { authRouter } from './modules/auth/auth.routes.js';
+import { consentsRouter } from './modules/consents/consents.routes.js';
+import { notificationsRouter } from './modules/notifications/notifications.routes.js';
 import { offersRouter } from './modules/offers/offers.routes.js';
 import { providersRouter } from './modules/providers/providers.routes.js';
 import { requestsRouter } from './modules/requests/requests.routes.js';
@@ -35,6 +37,8 @@ export function createApp() {
   const v1 = Router();
   v1.use(
     authRouter,
+    consentsRouter,
+    notificationsRouter,
     providersRouter,
     requestsRouter,
     offersRouter,

@@ -17,9 +17,33 @@ Health check: `GET /health` → `{ "status": "ok", "service": "CareBridge API" }
 
 | Method & path | Who | Body / query | Returns |
 |---|---|---|---|
-| `POST /auth/register` | public | `full_name, email, phone, password (≥10), role?: patient \| provider_staff` | `201 { id, role, status }` — patients `active`, staff `pending` |
+| `POST /auth/register` | public | `full_name, email, phone, password (≥10), role?: patient \| provider_staff, accept_terms: true, accept_privacy: true, marketing_opt_in?` | `201 { id, role, status }` — patients `active`, staff `pending` |
 | `POST /auth/login` | public | `email, password` | `{ token, user }`; `403 ACCOUNT_NOT_ACTIVE` if pending/suspended |
 | `GET /me` | any | — | profile + `memberships[]` for staff |
+
+Email fields ignore invisible characters (zero-width spaces etc. picked up when copying from chat apps) and are lower-cased.
+
+## Consents
+
+| Method & path | Who | Body | Notes |
+|---|---|---|---|
+| `GET /consents/policies` | public | — | current version, title and plain-language summary of `terms`, `privacy`, `data_sharing`, `marketing` |
+| `GET /consents` | any | — | my status per type: `granted`, `granted_version`, `up_to_date` (granted at the current version) |
+| `POST /consents` | any | `consent_type, granted, source?: settings \| request_form` | append-only history. `terms`/`privacy` can't be withdrawn (`409 CONSENT_NOT_REVOCABLE`). Withdrawing `data_sharing` cancels the patient's requests still waiting for a provider (`withdrawn_requests` in the response); journeys with a chosen provider continue |
+
+Registration records `terms` and `privacy` (and `marketing` if opted in). `POST /requests` needs `terms`, `privacy` and `data_sharing` at their **current** versions, else `409 CONSENT_REQUIRED` with `details.missing`.
+
+## Notifications (in-app inbox)
+
+| Method & path | Who | Query | Notes |
+|---|---|---|---|
+| `GET /notifications` | any | `unread?=true`, paging | newest first; each item `{ id, type, title, body, link, read_at, created_at }` (text rendered from the template) |
+| `GET /notifications/unread-count` | any | — | `{ count }` for the header bell |
+| `POST /notifications/:id/read` | owner | — | 404 for anyone else's |
+| `POST /notifications/read-all` | any | — | `{ updated }` |
+
+Notifications are created by the API in the same transaction as the change that causes them. SMS and email
+copies are sent by the worker (`npm run worker`). Which events notify whom: [architecture.md](architecture.md#notifications).
 
 ## Providers (public directory)
 
@@ -94,6 +118,8 @@ Health check: `GET /health` → `{ "status": "ok", "service": "CareBridge API" }
 | 403 | `ACCOUNT_NOT_ACTIVE` | Pending or suspended account |
 | 404 | `NOT_FOUND` | Missing, or you may not know it exists |
 | 409 | `ALREADY_REGISTERED` | Email or phone taken |
+| 409 | `CONSENT_REQUIRED` | Required agreements missing or outdated; `details.missing` lists them |
+| 409 | `CONSENT_NOT_REVOCABLE` | Terms/privacy can't be withdrawn while holding an account |
 | 409 | `INVALID_TRANSITION` | Status change not allowed from the current status |
 | 409 | `REQUEST_NOT_OPEN` | Request no longer accepts offers |
 | 409 | `REQUEST_NOT_BOOKABLE` | No provider accepted yet / request closed |

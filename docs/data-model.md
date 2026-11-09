@@ -18,7 +18,7 @@ erDiagram
   care_requests ||--o{ clinical_referrals : ""
   care_requests ||--o{ service_estimates : ""
   care_requests ||--o{ payments : ""
-  users ||--o{ patient_consents : gives
+  users ||--o{ user_consents : gives
   users ||--o{ notifications : receives
   users |o--o{ audit_logs : "actor"
 ```
@@ -36,8 +36,8 @@ erDiagram
 | `clinical_referrals` | Clinician-to-clinician referrals | `clinical_summary` is clinical text | ⏳ table only |
 | `service_estimates` | Estimated charges | `amount DECIMAL(14,2)`, `chk_service_estimates_amount` ≥ 0 | ⏳ table only |
 | `payments` | Payment records | `uq_payments_provider_reference` | ⏳ table only |
-| `patient_consents` | Versioned consent grants/revocations | `consent_type`, `version`, `revoked_at` | ⏳ table only |
-| `notifications` | Outbound message queue | `channel`, `template_key`, `status` | ⏳ table only |
+| `user_consents` | Append-only consent history (renamed from `patient_consents`: staff accept terms too) | `consent_type` terms/privacy/data_sharing/marketing · `version` · `granted` · `source` registration/settings/request_form · `ip_address` · `revoked_at` | ✅ |
+| `notifications` | Outbound message queue + in-app inbox | `channel`, `template_key`, `payload` (IDs/names/times only — never clinical text), `status` queued/sent/failed/skipped, `attempts`, `next_attempt_at`, `last_error`, `read_at` | 🟡 tables ready, sending in progress |
 | `audit_logs` | Append-only who-did-what | `action`, `entity_type`, `entity_id`, `metadata` JSON (IDs/statuses only — never clinical text) | ✅ every write |
 | `schema_migrations` | Migration bookkeeping (managed by the runner) | `version`, `name`, `checksum`, `execution_ms` | runner only |
 

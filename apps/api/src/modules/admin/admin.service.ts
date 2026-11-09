@@ -9,6 +9,7 @@ import type {
   ProvidersQuery,
   UsersQuery,
 } from './admin.schema.js';
+import * as notifications from '../notifications/notifications.service.js';
 import * as repo from './admin.repo.js';
 
 export const metrics = () => repo.metrics(pool);
@@ -35,6 +36,9 @@ export async function setUserStatus(c: Ctx, userId: number, status: 'active' | '
       ip: c.ip,
       metadata: { from: user.status },
     });
+    if (user.role === 'provider_staff' && user.status === 'pending' && status === 'active') {
+      await notifications.notify(tx, [userId], 'account_approved', {});
+    }
     return { id: userId, status };
   });
 }

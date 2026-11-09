@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router';
 import { ApiError } from '../../api/client';
 import { api } from '../../api/endpoints';
 import { useAuth } from '../../auth/authContext';
+import { cleanIdentifier } from '../../lib/text';
 import { Button, Card, ErrorNote, Field, Notice } from '../../components/ui';
 
 export function RegisterPage() {
@@ -15,9 +16,20 @@ export function RegisterPage() {
     phone: '',
     password: '',
     role: 'patient' as 'patient' | 'provider_staff',
+    accept_terms: false,
+    accept_privacy: false,
+    marketing_opt_in: false,
   });
-  const set = (k: keyof typeof form) => (e: { target: { value: string } }) =>
-    setForm((f) => ({ ...f, [k]: e.target.value }));
+  const check =
+    (k: 'accept_terms' | 'accept_privacy' | 'marketing_opt_in') =>
+    (e: { target: { checked: boolean } }) =>
+      setForm((f) => ({ ...f, [k]: e.target.checked }));
+  const set =
+    (k: 'full_name' | 'email' | 'phone' | 'password') => (e: { target: { value: string } }) =>
+      setForm((f) => ({
+        ...f,
+        [k]: k === 'email' || k === 'phone' ? cleanIdentifier(e.target.value) : e.target.value,
+      }));
 
   const register = useMutation({
     mutationFn: async () => {
@@ -119,8 +131,55 @@ export function RegisterPage() {
               onChange={set('password')}
             />
           </Field>
+          <fieldset className="consents">
+            <legend className="legend">Agreements</legend>
+            <label className="check">
+              <input
+                type="checkbox"
+                required
+                checked={form.accept_terms}
+                onChange={check('accept_terms')}
+              />
+              <span>
+                I accept the{' '}
+                <Link to="/policies#terms" target="_blank">
+                  terms of use
+                </Link>
+                . I understand CareBridge is not an emergency service.
+              </span>
+            </label>
+            {fe('accept_terms') && <span className="field-error">{fe('accept_terms')}</span>}
+            <label className="check">
+              <input
+                type="checkbox"
+                required
+                checked={form.accept_privacy}
+                onChange={check('accept_privacy')}
+              />
+              <span>
+                I have read the{' '}
+                <Link to="/policies#privacy" target="_blank">
+                  privacy notice
+                </Link>
+                .
+              </span>
+            </label>
+            {fe('accept_privacy') && <span className="field-error">{fe('accept_privacy')}</span>}
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={form.marketing_opt_in}
+                onChange={check('marketing_opt_in')}
+              />
+              <span>Send me occasional updates about CareBridge (optional).</span>
+            </label>
+          </fieldset>
           {Object.keys(fieldErrors).length === 0 && <ErrorNote error={register.error} />}
-          <Button type="submit" busy={register.isPending}>
+          <Button
+            type="submit"
+            busy={register.isPending}
+            disabled={!form.accept_terms || !form.accept_privacy}
+          >
             Create account
           </Button>
         </form>

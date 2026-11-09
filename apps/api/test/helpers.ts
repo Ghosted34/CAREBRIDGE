@@ -4,6 +4,7 @@ import supertest from 'supertest';
 import { createApp } from '../src/app.js';
 import { env } from '../src/config/env.js';
 import { pool, type Result, type Row } from '../src/db/pool.js';
+import { POLICIES } from '../src/modules/consents/policies.js';
 import type { ProviderRole, Role } from '../src/types.js';
 
 export const api = supertest(createApp());
@@ -11,7 +12,7 @@ export const api = supertest(createApp());
 const TABLES = [
   'audit_logs',
   'notifications',
-  'patient_consents',
+  'user_consents',
   'payments',
   'service_estimates',
   'clinical_referrals',
@@ -40,7 +41,11 @@ export interface TestUser {
   auth: { Authorization: string };
 }
 
-export async function makeUser(role: Role = 'patient', status = 'active'): Promise<TestUser> {
+export async function makeUser(
+  role: Role = 'patient',
+  status = 'active',
+  opts: { consents?: boolean } = {},
+): Promise<TestUser> {
   seq += 1;
   const [r] = await pool.execute<Result>(
     `INSERT INTO users(full_name, email, phone, password_hash, role, status) VALUES (?, ?, ?, ?, ?, ?)`,
@@ -53,6 +58,19 @@ export async function makeUser(role: Role = 'patient', status = 'active'): Promi
       status,
     ],
   );
+  // By default users have accepted everything a normal sign-up (and, for patients, a first request) would.
+  if (opts.consents !== false) {
+    const types =
+      role === 'patient'
+        ? (['terms', 'privacy', 'data_sharing'] as const)
+        : (['terms', 'privacy'] as const);
+    for (const t of types) {
+      await pool.execute(
+        `INSERT INTO user_consents(user_id, consent_type, version, granted, source) VALUES (?, ?, ?, TRUE, 'registration')`,
+        [r.insertId, t, POLICIES[t].version],
+      );
+    }
+  }
   const token = jwt.sign({ role }, env.JWT_SECRET, {
     subject: String(r.insertId),
     expiresIn: '1h',

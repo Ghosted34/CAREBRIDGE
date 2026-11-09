@@ -5,6 +5,7 @@
  */
 import bcrypt from 'bcryptjs';
 import { env } from '../config/env.js';
+import { POLICIES } from '../modules/consents/policies.js';
 import { pool, type Result, type Row } from './pool.js';
 
 if (env.NODE_ENV === 'production') {
@@ -22,6 +23,17 @@ async function upsertUser(full_name: string, email: string, phone: string, role:
     `INSERT INTO users(full_name, email, phone, password_hash, role, status) VALUES (?, ?, ?, ?, ?, 'active')`,
     [full_name, email, phone, hash, role],
   );
+  // Seeded accounts have accepted what a real sign-up would (patients also data sharing).
+  const types =
+    role === 'patient'
+      ? (['terms', 'privacy', 'data_sharing'] as const)
+      : (['terms', 'privacy'] as const);
+  for (const t of types) {
+    await pool.execute(
+      `INSERT INTO user_consents(user_id, consent_type, version, granted, source) VALUES (?, ?, ?, TRUE, 'registration')`,
+      [r.insertId, t, POLICIES[t].version],
+    );
+  }
   return r.insertId;
 }
 

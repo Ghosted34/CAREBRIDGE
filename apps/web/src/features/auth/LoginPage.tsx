@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router';
 import { homePathFor, useAuth } from '../../auth/authContext';
+import { cleanIdentifier } from '../../lib/text';
 import { Button, Card, ErrorNote, Field } from '../../components/ui';
 
 export function LoginPage() {
@@ -39,7 +40,7 @@ export function LoginPage() {
               autoComplete="email"
               required
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => setEmail(cleanIdentifier(e.target.value))}
             />
           </Field>
           <Field label="Password">

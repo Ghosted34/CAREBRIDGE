@@ -198,3 +198,34 @@ export interface ProviderMember {
   provider_role: ProviderRole;
   created_at: string;
 }
+
+export type ConsentType = 'terms' | 'privacy' | 'data_sharing' | 'marketing';
+
+export interface Policy {
+  type: ConsentType;
+  version: string;
+  title: string;
+  summary: string;
+  required_at_registration: boolean;
+  required_for_requests: boolean;
+}
+
+export interface ConsentStatus {
+  type: ConsentType;
+  current_version: string;
+  granted: boolean;
+  granted_version: string | null;
+  up_to_date: boolean;
+  decided_at: string | null;
+}
+
+export interface AppNotification {
+  id: number;
+  type: string;
+  title: string;
+  body: string;
+  /** Path in this app to open, e.g. /patient/requests/12 */
+  link: string;
+  read_at: string | null;
+  created_at: string;
+}

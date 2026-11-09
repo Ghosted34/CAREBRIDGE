@@ -10,6 +10,8 @@ const reg = (over: Record<string, unknown> = {}) => ({
   email: 'Ada@Example.com',
   phone: '+2348012345678',
   password: 'long-enough-pw',
+  accept_terms: true,
+  accept_privacy: true,
   ...over,
 });
 
@@ -91,5 +93,15 @@ describe('auth', () => {
     const missing = await api.get('/api/v1/nope');
     expect(missing.status).toBe(404);
     expect(missing.body.error.code).toBe('NOT_FOUND');
+  });
+});
+
+describe('pasted emails', () => {
+  it('ignores invisible characters copied from chat apps', async () => {
+    await api.post('/api/v1/auth/register').send(reg());
+    const r = await api
+      .post('/api/v1/auth/login')
+      .send({ email: '\u200Bada@example.com\u200B', password: 'long-enough-pw' });
+    expect(r.status).toBe(200);
   });
 });

@@ -28,6 +28,11 @@ to existing tables come after, one file per change.
 | 202611041103 | `add_request_status_index_to_provider_offers` | `idx_provider_offers_request_status` |
 | 202611041104 | `add_updated_at_to_appointments` | |
 | 202611041105 | `add_metadata_to_audit_logs` | `audit_logs.metadata` JSON |
+| 202611041600 | `rename_patient_consents_to_user_consents` | staff accept terms too |
+| 202611041601 | `rename_patient_user_id_in_user_consents` | column, index and FK renamed in one `ALTER` |
+| 202611041602 | `add_context_to_user_consents` | `source`, `ip_address` |
+| 202611041610 | `add_delivery_tracking_to_notifications` | retries, last error, read time, `skipped` status |
+| 202611041611 | `add_inbox_index_to_notifications` | inbox + queue indexes (see the note in its down section) |
 
 ## Commands
 
@@ -103,6 +108,7 @@ Never combine expand and contract in one release.
 | `…was changed after it was applied` | Revert your edit to that file (`git checkout` it) and put the change in a new migration. In local dev only, you may instead `migrate:down` past it, edit, and `migrate` again. |
 | `…is older than the newest applied migration` | Rename your file with a newer timestamp (`migrate:new` makes one), or if intentional, run with `--allow-out-of-order`. |
 | `…failed at statement N/M… already ran` | Inspect the schema (`SHOW CREATE TABLE …`), undo or finish the applied statements by hand, then rerun. Split the file into single-statement migrations. |
+| Down fails with *needed in a foreign key constraint* when dropping an index | MySQL silently dropped the FK's automatic index once a new index covered the same leading column. Drop the FK, drop the index, re-add the FK (see `202611041611_add_inbox_index_to_notifications.sql`). |
 | `Another migration run holds the lock` | Another container/terminal is migrating; wait. If a crashed session holds it, it's released when that MySQL connection closes. |
 | `migrated by the old migration runner` | Dev data only: `DROP DATABASE carebridge; CREATE DATABASE carebridge;` then `npm run migrate` (and `npm run seed`). |
 | `the up section is empty` | You ran `migrate:new` but didn't fill the file in. |

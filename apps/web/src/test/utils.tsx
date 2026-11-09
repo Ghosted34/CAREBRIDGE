@@ -67,3 +67,88 @@ export function mockFetch(...responses: { status?: number; body: unknown }[]) {
   vi.stubGlobal('fetch', fn);
   return fn;
 }
+
+type Reply = { status?: number; body: unknown };
+/**
+ * Route-aware fetch mock: keys are "METHOD /path" (path after /api/v1, query string ignored).
+ * A value can be a reply or a list of replies used in order (the last one repeats).
+ */
+export function mockApi(routes: Record<string, Reply | Reply[]>) {
+  const counters: Record<string, number> = {};
+  const fn = vi.fn(async (url: string, init?: RequestInit) => {
+    const path = url.replace(/^\/api\/v1/, '').split('?')[0];
+    const key = `${init?.method ?? 'GET'} ${path}`;
+    const entry = routes[key];
+    if (!entry) throw new Error(`Unmocked API call: ${key}`);
+    const list = Array.isArray(entry) ? entry : [entry];
+    const i = counters[key] ?? 0;
+    counters[key] = i + 1;
+    const r = list[Math.min(i, list.length - 1)]!;
+    return new Response(JSON.stringify(r.body), {
+      status: r.status ?? 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  });
+  vi.stubGlobal('fetch', fn);
+  return fn;
+}
+
+/** Calls made to one route, with parsed JSON bodies. */
+export function callsTo(fn: ReturnType<typeof mockApi>, key: string) {
+  return fn.mock.calls
+    .filter(
+      ([url, init]) =>
+        `${init?.method ?? 'GET'} ${
+          String(url)
+            .replace(/^\/api\/v1/, '')
+            .split('?')[0]
+        }` === key,
+    )
+    .map(([, init]) => (init?.body ? JSON.parse(String(init.body)) : undefined));
+}
+
+export const POLICIES_FIXTURE = [
+  {
+    type: 'terms',
+    version: 'v1',
+    title: 'Terms of use',
+    summary: 'Terms summary.',
+    required_at_registration: true,
+    required_for_requests: true,
+  },
+  {
+    type: 'privacy',
+    version: 'v1',
+    title: 'Privacy notice',
+    summary: 'Privacy summary.',
+    required_at_registration: true,
+    required_for_requests: true,
+  },
+  {
+    type: 'data_sharing',
+    version: 'v1',
+    title: 'Sharing your request with providers',
+    summary: 'We share your request with verified providers.',
+    required_at_registration: false,
+    required_for_requests: true,
+  },
+  {
+    type: 'marketing',
+    version: 'v1',
+    title: 'Updates and offers',
+    summary: 'Optional.',
+    required_at_registration: false,
+    required_for_requests: false,
+  },
+];
+
+export function consentsFixture(granted: Partial<Record<string, boolean>>) {
+  return POLICIES_FIXTURE.map((p) => ({
+    type: p.type,
+    current_version: 'v1',
+    granted: !!granted[p.type],
+    granted_version: granted[p.type] ? 'v1' : null,
+    up_to_date: !!granted[p.type],
+    decided_at: granted[p.type] ? '2026-11-01T10:00:00Z' : null,
+  }));
+}

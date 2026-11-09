@@ -9,7 +9,7 @@ verified providers make offers, the patient accepts one, appointments are booked
 moves the journey through assessment → treatment → completed. Product vision: `docs/product/`.
 
 ## Apps and commands
-- `apps/api` (Express + MySQL): `npm run dev` · `npm test` (real MySQL) · `npm run migrate` /
+- `apps/api` (Express + MySQL): `npm run dev` · `npm run dev:worker` (SMS/email worker) · `npm test` (real MySQL) · `npm run migrate` /
   `migrate:status` / `migrate:down` / `migrate:new -- <name>` / `migrate:verify` · `npm run seed`
 - `apps/web` (React + Vite): `npm run dev` (proxies /api to :4000) · `npm test` · `npm run build`
 - Both: `npm run lint && npm run typecheck && npm run format:check`
@@ -23,6 +23,8 @@ moves the journey through assessment → treatment → completed. Product vision
   See `docs/migrations.md`.
 - Web: data only through React Query + `src/api/endpoints.ts`; times via `src/lib/time.ts` (Africa/Lagos);
   status labels via `src/lib/labels.ts`; keep `src/api/types.ts` in step with API responses.
+- Notifications: call `notify(tx, …)` inside the transaction; never put clinical text in a payload.
+  SMS/email providers are adapters (`modules/notifications/providers/`); add new ones per docs/notifications.md.
 - Never log, audit or expose clinical text where it isn't needed. Never weaken the emergency redirect.
 - Tests with every behaviour change, including the *denied* permission case. Keep all suites green.
 - Update `docs/api.md` / `docs/data-model.md` in the same change as endpoints/schema.

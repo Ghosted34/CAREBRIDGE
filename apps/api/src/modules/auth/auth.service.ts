@@ -3,7 +3,8 @@ import jwt from 'jsonwebtoken';
 import type { SignOptions } from 'jsonwebtoken';
 import type { z } from 'zod';
 import { env } from '../../config/env.js';
-import { pool } from '../../db/pool.js';
+import { pool, withTransaction } from '../../db/pool.js';
+import * as consents from '../consents/consents.service.js';
 import { audit } from '../../lib/audit.js';
 import { AppError } from '../../lib/errors.js';
 import type { LoginBody, RegisterBody } from './auth.schema.js';
@@ -17,16 +18,28 @@ export async function register(input: z.infer<typeof RegisterBody>, ip: string |
   // Provider staff stay pending until an admin approves them and links them to a provider.
   const status = input.role === 'provider_staff' ? 'pending' : 'active';
   try {
-    const id = await repo.insertUser(pool, { ...input, password_hash, status });
-    await audit(pool, {
-      actorUserId: id,
-      action: 'USER_REGISTERED',
-      entityType: 'user',
-      entityId: id,
-      ip,
-      metadata: { role: input.role },
+    return await withTransaction(async (tx) => {
+      const id = await repo.insertUser(tx, {
+        full_name: input.full_name,
+        email: input.email,
+        phone: input.phone,
+        password_hash,
+        role: input.role,
+        status,
+      });
+      await audit(tx, {
+        actorUserId: id,
+        action: 'USER_REGISTERED',
+        entityType: 'user',
+        entityId: id,
+        ip,
+        metadata: { role: input.role },
+      });
+      await consents.grant(tx, id, 'terms', 'registration', ip);
+      await consents.grant(tx, id, 'privacy', 'registration', ip);
+      if (input.marketing_opt_in) await consents.grant(tx, id, 'marketing', 'registration', ip);
+      return { id, role: input.role, status };
     });
-    return { id, role: input.role, status };
   } catch (err) {
     if ((err as { code?: string }).code === 'ER_DUP_ENTRY') {
       throw AppError.conflict('ALREADY_REGISTERED', 'Email or phone already registered');

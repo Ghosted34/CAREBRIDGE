@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router';
 import type { Role } from '../api/types';
 import { useAuth } from '../auth/authContext';
+import { NotificationBell } from './NotificationBell';
 
 const NAV: Record<Role, { to: string; label: string }[]> = {
   patient: [
@@ -8,6 +9,7 @@ const NAV: Record<Role, { to: string; label: string }[]> = {
     { to: '/patient/new', label: 'New request' },
     { to: '/patient/appointments', label: 'Appointments' },
     { to: '/providers', label: 'Find providers' },
+    { to: '/account/privacy', label: 'Privacy' },
   ],
   provider_staff: [
     { to: '/provider', label: 'Request queue' },
@@ -73,6 +75,7 @@ export function Layout() {
           <div className="topbar-user">
             {user ? (
               <>
+                <NotificationBell />
                 <span className="user-chip" title={user.email}>
                   {user.full_name}
                   <small>{ROLE_LABEL[user.role]}</small>
@@ -105,7 +108,8 @@ export function Layout() {
       </main>
       <footer className="footer">
         CareBridge coordinates access to care; clinical decisions remain with licensed
-        professionals. In an emergency call <strong>112</strong>.
+        professionals. In an emergency call <strong>112</strong>.{' '}
+        <NavLink to="/policies">Terms &amp; privacy</NavLink>
       </footer>
     </div>
   );

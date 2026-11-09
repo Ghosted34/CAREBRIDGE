@@ -93,6 +93,14 @@ npm run seed                     # sample accounts + two Lagos clinics
 npm run dev                      # http://localhost:4000 — restarts when you save
 ```
 
+Optional third terminal, to see SMS/email notifications printed to the console (in-app notifications work
+without it):
+
+```powershell
+cd apps/api
+npm run dev:worker
+```
+
 Check it: open http://localhost:4000/health → `{"status":"ok",...}`.
 
 ### 4. Web (second terminal)
@@ -151,11 +159,11 @@ Docker-only setup: `docker compose down -v`, `docker compose up -d`, then seed a
 
 ```powershell
 cd apps/api
-npm test              # 63 tests against real MySQL (uses DB_* from apps/api/.env; see step 2)
+npm test              # 88 tests against real MySQL (uses DB_* from apps/api/.env; see step 2)
 npm run lint; npm run typecheck; npm run format:check
 
 cd ../web
-npm test              # 18 tests (no database needed)
+npm test              # 25 tests (no database needed)
 npm run lint; npm run typecheck; npm run build
 ```
 

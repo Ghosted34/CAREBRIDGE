@@ -14,6 +14,12 @@ const EnvSchema = z.object({
   CORS_ORIGIN: z.string().default('http://localhost:3000'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   BCRYPT_ROUNDS: z.coerce.number().int().min(4).max(15).default(12),
+  // Notifications: which adapter sends each channel (see modules/notifications/providers/registry.ts).
+  // Each provider validates its own settings (e.g. TERMII_API_KEY) when the worker starts.
+  NOTIFY_SMS_PROVIDER: z.string().default('log'),
+  NOTIFY_EMAIL_PROVIDER: z.string().default('log'),
+  APP_URL: z.string().default('http://localhost:3000'), // used for links in emails
+  WORKER_POLL_MS: z.coerce.number().int().min(500).default(5000),
 });
 
 const parsed = EnvSchema.safeParse(process.env);
