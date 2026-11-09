@@ -30,6 +30,34 @@ export const transitions = {
     cancelled: [],
     no_show: [],
   },
+  clinical_referral: {
+    draft: ['sent', 'cancelled'],
+    sent: ['accepted', 'declined', 'cancelled'],
+    accepted: ['completed', 'cancelled'],
+    declined: [],
+    completed: [],
+    cancelled: [],
+  },
+  service_estimate: {
+    draft: ['issued', 'expired'],
+    issued: ['accepted', 'rejected', 'expired'],
+    accepted: [],
+    rejected: [],
+    expired: [],
+  },
+  payment: {
+    initiated: ['pending', 'successful', 'failed'],
+    pending: ['successful', 'failed'],
+    successful: ['refunded'],
+    failed: [],
+    refunded: [],
+  },
+  provider_slot: {
+    available: ['booked', 'held', 'cancelled'],
+    held: ['available', 'booked', 'cancelled'],
+    booked: ['available', 'cancelled'],
+    cancelled: ['available'],
+  },
 } as const;
 
 type Machines = typeof transitions;

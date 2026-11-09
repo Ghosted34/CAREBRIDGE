@@ -1,5 +1,5 @@
 import type { z } from 'zod';
-import { pool, withTransaction } from '../../db/pool.js';
+import { pool, withTransaction, type Row } from '../../db/pool.js';
 import { assertCanActForProvider, isPlatformStaff, memberProviderIds } from '../../lib/access.js';
 import { audit } from '../../lib/audit.js';
 import { AppError } from '../../lib/errors.js';
@@ -150,4 +150,80 @@ export async function progress(c: Ctx, id: number, step: JourneyStep) {
     });
     return { id, status: to };
   });
+}
+
+export async function matches(c: Ctx, id: number) {
+  const request = await repo.findById(pool, id);
+  if (!request) throw AppError.notFound('Care request');
+  if (c.user.role === 'patient' && request.patient_user_id !== c.user.id) {
+    throw AppError.notFound('Care request');
+  }
+
+  const [providers] = await pool.query<Row[]>(
+    `SELECT id, legal_name, display_name, provider_type, city, address, specialties,
+            (SELECT COUNT(*) FROM provider_schedules ps WHERE ps.provider_id = providers.id AND ps.is_active = 1) AS active_schedules,
+            (SELECT COUNT(*) FROM provider_slots sl WHERE sl.provider_id = providers.id AND sl.status = 'available' AND sl.start_time > NOW()) AS available_slots
+       FROM providers
+      WHERE verification_status = 'verified' AND status = 'active'`,
+  );
+
+  return providers
+    .map((p) => {
+      let specialtiesArr: string[];
+      try {
+        specialtiesArr =
+          typeof p.specialties === 'string'
+            ? JSON.parse(p.specialties)
+            : ((p.specialties as string[]) ?? []);
+      } catch {
+        specialtiesArr = [];
+      }
+
+      const categoryLower = request.category.toLowerCase();
+      let clinicalFit = 10;
+      if (specialtiesArr.some((s) => s.toLowerCase().includes(categoryLower))) {
+        clinicalFit = 40;
+      } else if (
+        specialtiesArr.some(
+          (s) => s.toLowerCase().includes('dentist') || s.toLowerCase().includes('dental'),
+        )
+      ) {
+        clinicalFit = 30;
+      }
+
+      const verificationScore = 20;
+
+      let locationFit = 10;
+      if (p.city && request.city && p.city.toLowerCase() === request.city.toLowerCase()) {
+        locationFit = 20;
+      }
+
+      const availabilityScore =
+        Number(p.available_slots) > 0 ? 10 : Number(p.active_schedules) > 0 ? 7 : 4;
+      const performanceScore = 10;
+
+      const totalScore =
+        clinicalFit + verificationScore + locationFit + availabilityScore + performanceScore;
+      const tier = totalScore >= 85 ? 'excellent' : totalScore >= 70 ? 'good' : 'fair';
+
+      return {
+        provider_id: p.id,
+        display_name: p.display_name,
+        city: p.city,
+        address: p.address,
+        specialties: specialtiesArr,
+        score: {
+          total: totalScore,
+          tier,
+          breakdown: {
+            clinical_fit: clinicalFit,
+            verification: verificationScore,
+            location_fit: locationFit,
+            availability: availabilityScore,
+            performance: performanceScore,
+          },
+        },
+      };
+    })
+    .sort((a, b) => b.score.total - a.score.total);
 }

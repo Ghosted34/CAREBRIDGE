@@ -116,3 +116,70 @@ export async function listMembers(db: Db, providerId: number) {
   );
   return rows;
 }
+
+export async function listAuditLogs(
+  db: Db,
+  f: {
+    action?: string;
+    entity_type?: string;
+    entity_id?: number;
+    actor_user_id?: number;
+  } & Pagination,
+) {
+  const where: string[] = [];
+  const params: unknown[] = [];
+  if (f.action) {
+    where.push('a.action = ?');
+    params.push(f.action);
+  }
+  if (f.entity_type) {
+    where.push('a.entity_type = ?');
+    params.push(f.entity_type);
+  }
+  if (f.entity_id) {
+    where.push('a.entity_id = ?');
+    params.push(f.entity_id);
+  }
+  if (f.actor_user_id) {
+    where.push('a.actor_user_id = ?');
+    params.push(f.actor_user_id);
+  }
+  const [rows] = await db.query<Row[]>(
+    `SELECT a.id, a.actor_user_id, u.full_name AS actor_name, u.email AS actor_email,
+            a.action, a.entity_type, a.entity_id, a.ip_address, a.metadata, a.created_at
+       FROM audit_logs a
+       LEFT JOIN users u ON u.id = a.actor_user_id
+      ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+      ORDER BY a.created_at DESC, a.id DESC LIMIT ? OFFSET ?`,
+    [...params, f.limit, f.offset],
+  );
+  return rows;
+}
+
+export async function listStuckRequests(db: Db) {
+  const [rows] = await db.query<Row[]>(
+    `SELECT r.id, r.patient_user_id, u.full_name AS patient_name, u.email AS patient_email,
+            r.category, r.urgency, r.status, r.city, r.assigned_provider_id, p.display_name AS assigned_provider,
+            r.created_at, r.updated_at,
+            TIMESTAMPDIFF(MINUTE, r.created_at, NOW()) AS age_minutes,
+            (SELECT COUNT(*) FROM provider_offers po WHERE po.care_request_id = r.id) AS offers_count,
+            (SELECT COUNT(*) FROM appointments ap WHERE ap.care_request_id = r.id AND ap.status != 'cancelled') AS appointments_count,
+            CASE
+              WHEN r.status IN ('submitted','matching') AND TIMESTAMPDIFF(MINUTE, r.created_at, NOW()) >= 120 THEN 'unmatched_breach'
+              WHEN r.status IN ('submitted','matching') AND TIMESTAMPDIFF(MINUTE, r.created_at, NOW()) >= 60 THEN 'unmatched_warning'
+              WHEN r.status = 'provider_accepted' AND TIMESTAMPDIFF(HOUR, r.updated_at, NOW()) >= 24 THEN 'unbooked_delay'
+              WHEN r.status IN ('assessment','treatment_planned','in_progress') AND TIMESTAMPDIFF(DAY, r.updated_at, NOW()) >= 7 THEN 'clinical_stalled'
+              ELSE 'standard'
+            END AS sla_category
+       FROM care_requests r
+       JOIN users u ON u.id = r.patient_user_id
+       LEFT JOIN providers p ON p.id = r.assigned_provider_id
+      WHERE (
+        (r.status IN ('submitted','matching') AND TIMESTAMPDIFF(MINUTE, r.created_at, NOW()) >= 60)
+        OR (r.status = 'provider_accepted' AND TIMESTAMPDIFF(HOUR, r.updated_at, NOW()) >= 24)
+        OR (r.status IN ('assessment','treatment_planned','in_progress') AND TIMESTAMPDIFF(DAY, r.updated_at, NOW()) >= 7)
+      )
+      ORDER BY r.created_at ASC`,
+  );
+  return rows;
+}

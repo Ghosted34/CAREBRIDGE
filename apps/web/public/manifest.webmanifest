@@ -1,0 +1,19 @@
+{
+  "name": "CareBridge Healthcare",
+  "short_name": "CareBridge",
+  "description": "Coordinated healthcare access & verified provider pilot in Lagos",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f8fafc",
+  "theme_color": "#0f766e",
+  "categories": ["medical", "health", "lifestyle"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

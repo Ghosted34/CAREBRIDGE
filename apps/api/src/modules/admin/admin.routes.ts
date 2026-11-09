@@ -5,6 +5,7 @@ import { IdParam, parse } from '../../lib/validate.js';
 import { allow, authenticate } from '../../middleware/auth.js';
 import {
   AddMemberBody,
+  AuditLogsQuery,
   CreateProviderBody,
   SetUserStatusBody,
   SetVerificationBody,
@@ -15,9 +16,19 @@ import * as service from './admin.service.js';
 
 export const adminRouter = Router();
 const admin = [authenticate, allow('admin')];
+const staff = [authenticate, allow('admin', 'operator')];
 
-adminRouter.get('/admin/metrics', authenticate, allow('admin', 'operator'), async (_req, res) => {
+adminRouter.get('/admin/metrics', ...staff, async (_req, res) => {
   ok(res, await service.metrics());
+});
+
+adminRouter.get('/admin/audit-logs', ...staff, async (req, res) => {
+  const q = parse(AuditLogsQuery, req.query);
+  list(res, await service.listAuditLogs(q), q);
+});
+
+adminRouter.get('/admin/stuck-requests', ...staff, async (_req, res) => {
+  ok(res, await service.listStuckRequests());
 });
 
 adminRouter.get('/admin/users', ...admin, async (req, res) => {

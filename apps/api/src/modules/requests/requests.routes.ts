@@ -51,6 +51,10 @@ requestsRouter.get('/requests/:id', authenticate, async (req, res) => {
   ok(res, await service.get(ctx(req), parse(IdParam, req.params).id));
 });
 
+requestsRouter.get('/requests/:id/matches', authenticate, async (req, res) => {
+  ok(res, await service.matches(ctx(req), parse(IdParam, req.params).id));
+});
+
 requestsRouter.post(
   '/requests/:id/cancel',
   authenticate,

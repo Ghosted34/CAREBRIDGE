@@ -5,6 +5,7 @@ import { AppError } from '../../lib/errors.js';
 import type { Ctx } from '../../lib/http.js';
 import type {
   AddMemberBody,
+  AuditLogsQuery,
   CreateProviderBody,
   ProvidersQuery,
   UsersQuery,
@@ -15,6 +16,8 @@ import * as repo from './admin.repo.js';
 export const metrics = () => repo.metrics(pool);
 export const listUsers = (q: z.infer<typeof UsersQuery>) => repo.listUsers(pool, q);
 export const listProviders = (q: z.infer<typeof ProvidersQuery>) => repo.listProviders(pool, q);
+export const listAuditLogs = (q: z.infer<typeof AuditLogsQuery>) => repo.listAuditLogs(pool, q);
+export const listStuckRequests = () => repo.listStuckRequests(pool);
 
 export async function listMembers(providerId: number) {
   if (!(await repo.findProvider(pool, providerId))) throw AppError.notFound('Provider');

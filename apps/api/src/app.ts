@@ -8,10 +8,16 @@ import { adminRouter } from './modules/admin/admin.routes.js';
 import { appointmentsRouter } from './modules/appointments/appointments.routes.js';
 import { authRouter } from './modules/auth/auth.routes.js';
 import { consentsRouter } from './modules/consents/consents.routes.js';
+import { docsRouter } from './modules/docs/docs.routes.js';
+import { documentsRouter } from './modules/documents/documents.routes.js';
+import { estimatesRouter } from './modules/estimates/estimates.routes.js';
 import { notificationsRouter } from './modules/notifications/notifications.routes.js';
 import { offersRouter } from './modules/offers/offers.routes.js';
+import { paymentsRouter } from './modules/payments/payments.routes.js';
 import { providersRouter } from './modules/providers/providers.routes.js';
+import { referralsRouter } from './modules/referrals/referrals.routes.js';
 import { requestsRouter } from './modules/requests/requests.routes.js';
+import { slotsRouter } from './modules/slots/slots.routes.js';
 
 /** Build the Express app without listening, so tests can drive it with supertest. */
 export function createApp() {
@@ -43,6 +49,12 @@ export function createApp() {
     requestsRouter,
     offersRouter,
     appointmentsRouter,
+    slotsRouter,
+    referralsRouter,
+    estimatesRouter,
+    documentsRouter,
+    paymentsRouter,
+    docsRouter,
     adminRouter,
   );
   app.use('/api/v1', v1);

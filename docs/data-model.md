@@ -33,11 +33,14 @@ erDiagram
 | `care_requests` | A patient's request — start of every journey | `status` (see below) · `urgency` · `assigned_provider_id` (set when an offer is accepted) · `description` is **clinical text** | ✅ |
 | `provider_offers` | A provider offering to take a request | `uq_provider_offers_request_provider` (one per provider per request) · `status` | ✅ |
 | `appointments` | Scheduled visits | `chk_appointments_time_order` (end > start) · `idx_appointments_provider_time` for overlap checks | ✅ |
-| `clinical_referrals` | Clinician-to-clinician referrals | `clinical_summary` is clinical text | ⏳ table only |
-| `service_estimates` | Estimated charges | `amount DECIMAL(14,2)`, `chk_service_estimates_amount` ≥ 0 | ⏳ table only |
-| `payments` | Payment records | `uq_payments_provider_reference` | ⏳ table only |
+| `provider_schedules` | Weekly clinic opening hours | `uq_provider_schedules_day`, `day_of_week` (0-6), `slot_duration_minutes` | ✅ |
+| `provider_slots` | Bookable appointment slots | `start_time`, `end_time`, `status` available/held/booked/cancelled | ✅ |
+| `clinical_referrals` | Clinician-to-clinician referrals | `clinical_summary` is clinical text | ✅ |
+| `service_estimates` | Estimated charges | `amount DECIMAL(14,2)`, `chk_service_estimates_amount` ≥ 0 | ✅ |
+| `clinical_documents` | Photos, X-rays, lab reports in encrypted storage | `care_request_id`, `uploader_user_id`, `storage_key`, `document_type` | ✅ |
+| `payments` | Payment records | `uq_payments_provider_reference` | ✅ |
 | `user_consents` | Append-only consent history (renamed from `patient_consents`: staff accept terms too) | `consent_type` terms/privacy/data_sharing/marketing · `version` · `granted` · `source` registration/settings/request_form · `ip_address` · `revoked_at` | ✅ |
-| `notifications` | Outbound message queue + in-app inbox | `channel`, `template_key`, `payload` (IDs/names/times only — never clinical text), `status` queued/sent/failed/skipped, `attempts`, `next_attempt_at`, `last_error`, `read_at` | 🟡 tables ready, sending in progress |
+| `notifications` | Outbound message queue + in-app inbox | `channel`, `template_key`, `payload` (IDs/names/times only — never clinical text), `status` queued/sent/failed/skipped, `attempts`, `next_attempt_at`, `last_error`, `read_at` | ✅ |
 | `audit_logs` | Append-only who-did-what | `action`, `entity_type`, `entity_id`, `metadata` JSON (IDs/statuses only — never clinical text) | ✅ every write |
 | `schema_migrations` | Migration bookkeeping (managed by the runner) | `version`, `name`, `checksum`, `execution_ms` | runner only |
 

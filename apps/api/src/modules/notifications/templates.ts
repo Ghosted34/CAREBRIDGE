@@ -130,6 +130,61 @@ export const TEMPLATES = {
       'You can now sign in. If you are linked to a clinic, matching requests will appear in your queue.',
     link: () => '/provider',
   },
+  referral_received: {
+    channels: ['in_app', 'email'],
+    title: () => 'New clinical referral received',
+    body: (p) =>
+      `A clinician has referred request #${p.request_id} to ${p.provider} (${p.specialty ?? 'specialist'}).`,
+    link: () => '/provider/referrals',
+  },
+  referral_accepted: {
+    channels: ['in_app'],
+    title: () => 'Referral accepted',
+    body: (p) => `${p.provider} accepted the referral for request #${p.request_id}.`,
+    link: () => '/provider/referrals',
+  },
+  referral_declined: {
+    channels: ['in_app'],
+    title: () => 'Referral declined',
+    body: (p) => `${p.provider} was unable to accept the referral for request #${p.request_id}.`,
+    link: () => '/provider/referrals',
+  },
+  estimate_issued: {
+    channels: ['in_app', 'sms'],
+    title: () => 'New cost estimate available',
+    body: (p) =>
+      `${p.provider} has provided a cost estimate of ${p.amount ?? ''} for request #${p.request_id}.`,
+    sms: (p) =>
+      `CareBridge: a cost estimate was issued for your request #${p.request_id}. Open the app to review.`,
+    link: (p) => `/patient/requests/${p.request_id}`,
+  },
+  estimate_accepted: {
+    channels: ['in_app'],
+    title: () => 'Patient approved estimate',
+    body: (p) => `The patient for request #${p.request_id} has approved your cost estimate.`,
+    link: () => '/provider/patients',
+  },
+  estimate_rejected: {
+    channels: ['in_app'],
+    title: () => 'Patient declined estimate',
+    body: (p) => `The patient for request #${p.request_id} declined your cost estimate.`,
+    link: () => '/provider/patients',
+  },
+  payment_successful: {
+    channels: ['in_app', 'sms'],
+    title: () => 'Payment confirmed',
+    body: (p) =>
+      `Payment of ${p.amount ?? ''} for request #${p.request_id} was successfully processed.`,
+    sms: (p) =>
+      `CareBridge: payment of ${p.amount ?? ''} for request #${p.request_id} was confirmed.`,
+    link: (p) => `/patient/requests/${p.request_id}`,
+  },
+  document_uploaded: {
+    channels: ['in_app'],
+    title: () => 'New document attached',
+    body: (p) => `A new clinical document was uploaded for request #${p.request_id}.`,
+    link: (p) => `/patient/requests/${p.request_id}`,
+  },
 } satisfies Record<string, Template>;
 
 export type TemplateKey = keyof typeof TEMPLATES;

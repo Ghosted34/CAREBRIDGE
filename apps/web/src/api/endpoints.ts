@@ -2,28 +2,41 @@
 import { qs, request } from './client';
 import type {
   AdminProvider,
-  AppNotification,
-  ConsentStatus,
-  ConsentType,
-  Policy,
   AdminUser,
+  AppNotification,
   Appointment,
   AppointmentType,
   AssignedRequest,
+  AuditLog,
   CareRequest,
   CareRequestSummary,
+  ClinicalDocument,
+  ClinicalReferral,
+  ConsentStatus,
+  ConsentType,
+  DocumentType,
   Envelope,
   ListEnvelope,
   LoginResult,
+  MatchingProvider,
   Me,
   Metrics,
   Offer,
+  PaymentInitResult,
+  PaymentRecord,
+  Policy,
   Provider,
   ProviderMember,
   ProviderOffer,
   ProviderRole,
+  ProviderSchedule,
+  ProviderSlot,
   QueueItem,
+  ReferralStatus,
   RequestStatus,
+  ServiceEstimate,
+  SlotStatus,
+  StuckRequest,
   Urgency,
   UserStatus,
   VerificationStatus,
@@ -31,6 +44,7 @@ import type {
 
 const get = <T>(path: string) => request<T>('GET', path);
 const post = <T>(path: string, body?: unknown) => request<T>('POST', path, body ?? {});
+const put = <T>(path: string, body?: unknown) => request<T>('PUT', path, body ?? {});
 
 export const api = {
   // auth
@@ -110,12 +124,109 @@ export const api = {
     starts_at: string;
     ends_at: string;
     appointment_type: AppointmentType;
+    slot_id?: number;
   }) => post<Envelope<{ id: number }>>('/appointments', body),
   myAppointments: () => get<ListEnvelope<Appointment>>('/appointments/mine'),
   appointmentAction: (id: number, verb: AppointmentVerb) =>
     post<Envelope<{ id: number }>>(`/appointments/${id}/${verb}`),
 
+  // capacity & slots
+  providerSchedules: (providerId: number) =>
+    get<Envelope<ProviderSchedule[]>>(`/providers/${providerId}/schedules`),
+  setProviderSchedules: (
+    providerId: number,
+    schedules: Array<Omit<ProviderSchedule, 'id' | 'provider_id'>>,
+  ) => put<Envelope<ProviderSchedule[]>>(`/providers/${providerId}/schedules`, { schedules }),
+  providerSlots: (
+    providerId: number,
+    query: { from?: string; to?: string; status?: SlotStatus } = {},
+  ) => get<Envelope<ProviderSlot[]>>(`/providers/${providerId}/slots${qs(query)}`),
+  createSlot: (providerId: number, body: { start_time: string; end_time: string }) =>
+    post<Envelope<ProviderSlot>>(`/providers/${providerId}/slots`, body),
+  generateSlots: (providerId: number, body: { start_date: string; end_date: string }) =>
+    post<Envelope<{ created_count: number }>>(`/providers/${providerId}/slots/generate`, body),
+  cancelSlot: (id: number) => post<Envelope<ProviderSlot>>(`/slots/${id}/cancel`),
+
+  // matching
+  matchesForRequest: (requestId: number) =>
+    get<Envelope<MatchingProvider[]>>(`/requests/${requestId}/matches`),
+
+  // referrals
+  createReferral: (
+    requestId: number,
+    body: { receiving_provider_id: number; referred_specialty: string; clinical_summary: string },
+  ) => post<Envelope<ClinicalReferral>>(`/requests/${requestId}/referrals`, body),
+  referralsForRequest: (requestId: number) =>
+    get<Envelope<ClinicalReferral[]>>(`/requests/${requestId}/referrals`),
+  myReferrals: (query: { type?: 'incoming' | 'outgoing' | 'all'; status?: ReferralStatus } = {}) =>
+    get<Envelope<ClinicalReferral[]>>(`/referrals/mine${qs(query)}`),
+  acceptReferral: (id: number) => post<Envelope<ClinicalReferral>>(`/referrals/${id}/accept`),
+  declineReferral: (id: number) => post<Envelope<ClinicalReferral>>(`/referrals/${id}/decline`),
+  completeReferral: (id: number) => post<Envelope<ClinicalReferral>>(`/referrals/${id}/complete`),
+
+  // estimates
+  createEstimate: (
+    requestId: number,
+    body: {
+      amount: number;
+      currency?: string;
+      inclusions?: string;
+      exclusions?: string;
+      valid_until?: string;
+    },
+  ) => post<Envelope<ServiceEstimate>>(`/requests/${requestId}/estimates`, body),
+  estimatesForRequest: (requestId: number) =>
+    get<Envelope<ServiceEstimate[]>>(`/requests/${requestId}/estimates`),
+  acceptEstimate: (id: number) => post<Envelope<ServiceEstimate>>(`/estimates/${id}/accept`),
+  rejectEstimate: (id: number) => post<Envelope<ServiceEstimate>>(`/estimates/${id}/reject`),
+
+  // documents (secure uploads)
+  requestUploadUrl: (
+    requestId: number,
+    body: {
+      document_type: DocumentType;
+      file_name: string;
+      mime_type: string;
+      file_size_bytes: number;
+    },
+  ) =>
+    post<
+      Envelope<{
+        storage_key: string;
+        upload_url: string;
+        method: string;
+        headers: Record<string, string>;
+        expires_in_seconds: number;
+      }>
+    >(`/requests/${requestId}/documents/upload-url`, body),
+  confirmUpload: (
+    requestId: number,
+    body: {
+      storage_key: string;
+      document_type: DocumentType;
+      file_name: string;
+      mime_type: string;
+      file_size_bytes: number;
+    },
+  ) => post<Envelope<ClinicalDocument>>(`/requests/${requestId}/documents`, body),
+  documentsForRequest: (requestId: number) =>
+    get<Envelope<ClinicalDocument[]>>(`/requests/${requestId}/documents`),
+
+  // payments
+  initializePayment: (
+    requestId: number,
+    body: { amount: number; currency?: string; callback_url?: string },
+  ) => post<Envelope<PaymentInitResult>>(`/requests/${requestId}/payments/initialize`, body),
+  paymentsForRequest: (requestId: number) =>
+    get<Envelope<PaymentRecord[]>>(`/requests/${requestId}/payments`),
+  simulatePaymentSuccess: (paymentId: number) =>
+    post<Envelope<PaymentRecord>>(`/payments/${paymentId}/simulate-success`),
+
   // admin / operations
+  stuckRequests: () => get<Envelope<StuckRequest[]>>('/admin/stuck-requests'),
+  auditLogs: (
+    p: { action?: string; entity_type?: string; entity_id?: number; actor_user_id?: number } = {},
+  ) => get<ListEnvelope<AuditLog>>(`/admin/audit-logs${qs(p)}`),
   metrics: () => get<Envelope<Metrics>>('/admin/metrics'),
   users: (p: { status?: UserStatus; role?: string } = {}) =>
     get<ListEnvelope<AdminUser>>(`/admin/users${qs(p)}`),
