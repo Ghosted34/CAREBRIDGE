@@ -4,21 +4,21 @@ import { api } from '../../api/endpoints';
 import { Button, Card, EmptyState, ErrorNote, Field, Modal, Pill } from '../../components/ui';
 import { formatDateTime, toLagosLocal } from '../../lib/time';
 import { slotStatus } from '../../lib/labels';
-import { useOfferableProviders } from './useOfferableProviders';
+import { useActiveClinic } from './activeClinic';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 export function CapacityPage() {
   const queryClient = useQueryClient();
-  const providers = useOfferableProviders();
-  const [selectedId, setSelectedId] = useState<number | undefined>(providers[0]?.id);
+  // Capacity follows the clinic picked in the topbar switcher.
+  const { clinicId } = useActiveClinic();
   const [generateOpen, setGenerateOpen] = useState(false);
   const [startDate, setStartDate] = useState(() => toLagosLocal(new Date()).slice(0, 10));
   const [endDate, setEndDate] = useState(() =>
     toLagosLocal(new Date(Date.now() + 14 * 86_400_000)).slice(0, 10),
   );
 
-  const activeId = selectedId ?? providers[0]?.id;
+  const activeId = clinicId;
 
   const { data: schedulesData, isLoading: schedulesLoading } = useQuery({
     queryKey: ['schedules', activeId],
@@ -62,16 +62,9 @@ export function CapacityPage() {
           <p className="hint">Manage operating hours and real bookable appointment capacity.</p>
         </div>
         <div className="cluster gap-2">
-          {providers.length > 1 && (
-            <select value={activeId} onChange={(e) => setSelectedId(Number(e.target.value))}>
-              {providers.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          )}
-          <Button onClick={() => setGenerateOpen(true)}>Generate slots</Button>
+          <Button onClick={() => setGenerateOpen(true)} disabled={!activeId}>
+            Generate slots
+          </Button>
         </div>
       </div>
 

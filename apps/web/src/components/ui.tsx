@@ -2,7 +2,9 @@ import {
   useEffect,
   useId,
   useRef,
+  useState,
   type ButtonHTMLAttributes,
+  type InputHTMLAttributes,
   type ReactElement,
   type ReactNode,
 } from 'react';
@@ -73,6 +75,77 @@ export function Field({
         </span>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * Password field with a show/hide toggle. The toggle is a real button next to the input, so it is
+ * keyboard reachable and announced (never an icon inside the field stealing the caret).
+ */
+export function PasswordField({
+  value,
+  onValueChange,
+  autoComplete = 'current-password',
+  ...rest
+}: Omit<InputHTMLAttributes<HTMLInputElement>, 'type' | 'onChange' | 'value'> & {
+  value: string;
+  onValueChange: (value: string) => void;
+}) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <span className="input-affix">
+      <input
+        {...rest}
+        type={visible ? 'text' : 'password'}
+        autoComplete={autoComplete}
+        value={value}
+        onChange={(e) => onValueChange(e.target.value)}
+      />
+      <button
+        type="button"
+        className="affix-btn"
+        onClick={() => setVisible((v) => !v)}
+        aria-pressed={visible}
+      >
+        {visible ? 'Hide' : 'Show'}
+      </button>
+    </span>
+  );
+}
+
+/**
+ * Numeric input without the browser spinner: spinners make money and phone-like values easy to
+ * change by accident (scroll, arrow keys) and look inconsistent across browsers. Digits only,
+ * grouped in threes, right-aligned and tabular — the usual pattern for amounts.
+ */
+export function NumberField({
+  value,
+  onValueChange,
+  max,
+  ...rest
+}: Omit<InputHTMLAttributes<HTMLInputElement>, 'type' | 'onChange' | 'value' | 'max'> & {
+  /** Digits only, without separators. */
+  value: string;
+  onValueChange: (digits: string) => void;
+  /** Optional ceiling, enforced in the field so the API never sees an out-of-range amount. */
+  max?: number;
+}) {
+  const digits = value.replace(/\D/g, '');
+  const overMax = max !== undefined && digits !== '' && Number(digits) > max;
+  return (
+    <input
+      {...rest}
+      type="text"
+      inputMode="numeric"
+      autoComplete="off"
+      className={`input-number${rest.className ? ` ${rest.className}` : ''}`}
+      aria-invalid={overMax || rest['aria-invalid'] || undefined}
+      value={digits === '' ? '' : Number(digits).toLocaleString('en-US')}
+      onChange={(e) => {
+        const next = e.target.value.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+        onValueChange(max !== undefined ? next.slice(0, String(max).length + 1) : next);
+      }}
+    />
   );
 }
 

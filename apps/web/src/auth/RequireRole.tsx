@@ -9,7 +9,11 @@ export function RequireRole({ roles, children }: { roles: Role[]; children: Reac
   const { user, loading } = useAuth();
   const location = useLocation();
   if (loading) return <Spinner label="Loading your account" />;
-  if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  // Keep the query string: /patient/new?providerId=3 has to survive a sign-in detour.
+  if (!user)
+    return (
+      <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />
+    );
   if (!roles.includes(user.role)) return <Navigate to={homePathFor(user.role)} replace />;
   return <>{children}</>;
 }

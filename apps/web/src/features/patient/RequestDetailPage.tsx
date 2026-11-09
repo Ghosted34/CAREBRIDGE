@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type ChangeEvent } from 'react';
 import { Link, useLocation, useParams } from 'react-router';
 import { api } from '../../api/endpoints';
+import type { Appointment } from '../../api/types';
 import { BookingForm } from '../../components/BookingForm';
 import { JourneyTimeline } from '../../components/Journey';
 import {
@@ -12,6 +13,7 @@ import {
   Field,
   Modal,
   Notice,
+  NumberField,
   PageHeader,
   Pill,
   Spinner,
@@ -29,12 +31,15 @@ import { formatDateTime, formatTimeRange } from '../../lib/time';
 
 const BOOKABLE = ['provider_accepted', 'assessment', 'treatment_planned', 'in_progress'];
 
+const isFuture = (iso: string) => new Date(iso).getTime() > Date.now();
+
 export function RequestDetailPage() {
   const id = Number(useParams().id);
   const justCreated = (useLocation().state as { created?: boolean } | null)?.created;
   const queryClient = useQueryClient();
   const [payModalOpen, setPayModalOpen] = useState(false);
-  const [payAmount, setPayAmount] = useState(15000);
+  // Amounts are edited as digits-only text (see NumberField) and parsed when the payment starts.
+  const [payAmount, setPayAmount] = useState('15000');
   const [uploadDocType, setUploadDocType] = useState<'photo' | 'xray' | 'report' | 'other'>(
     'photo',
   );
@@ -46,7 +51,7 @@ export function RequestDetailPage() {
   });
   const appointments = useQuery({
     queryKey: ['appointments', 'mine'],
-    queryFn: api.myAppointments,
+    queryFn: () => api.myAppointments(),
   });
   const estimates = useQuery({
     queryKey: ['estimates', id],
@@ -94,7 +99,7 @@ export function RequestDetailPage() {
   });
 
   const initPayment = useMutation({
-    mutationFn: () => api.initializePayment(id, { amount: payAmount, currency: 'NGN' }),
+    mutationFn: () => api.initializePayment(id, { amount: Number(payAmount), currency: 'NGN' }),
     onSuccess: () => {
       setPayModalOpen(false);
       refresh();
@@ -144,6 +149,14 @@ export function RequestDetailPage() {
   const r = request.data.data;
   const s = requestStatus[r.status];
   const myAppts = (appointments.data?.data ?? []).filter((a) => a.care_request_id === id);
+  // One upcoming visit is enough: the clinic books the next one after that visit, so we show a
+  // summary instead of the booking form (and nobody double-books) while an appointment is live.
+  const isUpcoming = (a: Appointment) =>
+    (a.status === 'booked' || a.status === 'confirmed') && isFuture(a.ends_at);
+  const hasActiveAppointment = myAppts.some(isUpcoming);
+  const nextAppointment = myAppts
+    .filter(isUpcoming)
+    .sort((a, b) => a.starts_at.localeCompare(b.starts_at))[0];
   const openOffers = (offers.data?.data ?? []).filter((o) => o.status === 'offered');
   const canCancel = !['completed', 'cancelled'].includes(r.status);
   const accepted = offers.data?.data.find((o) => o.status === 'accepted');
@@ -222,19 +235,43 @@ export function RequestDetailPage() {
               <ErrorNote error={respond.error} />
             </Card>
           ) : (
-            accepted && (
+            (accepted || r.assigned_provider) && (
               <Card>
                 <h2>Your provider</h2>
-                <div className="list-item-title">{accepted.provider}</div>
-                <div className="muted small">{accepted.provider_address}</div>
+                <div className="list-item-title">{accepted?.provider ?? r.assigned_provider}</div>
+                {accepted && <div className="muted small">{accepted.provider_address}</div>}
               </Card>
             )
           )}
 
-          {BOOKABLE.includes(r.status) && (
+          {BOOKABLE.includes(r.status) && !hasActiveAppointment && (
             <Card>
               <h2>Book an appointment</h2>
               <BookingForm careRequestId={r.id} providerId={r.assigned_provider_id ?? undefined} />
+            </Card>
+          )}
+
+          {BOOKABLE.includes(r.status) && nextAppointment && (
+            <Card>
+              <h2>Upcoming appointment</h2>
+              <dl className="kv">
+                <dt>When</dt>
+                <dd>{formatTimeRange(nextAppointment.starts_at, nextAppointment.ends_at)}</dd>
+                <dt>Where</dt>
+                <dd>{nextAppointment.provider}</dd>
+                <dt>Type</dt>
+                <dd>{appointmentType[nextAppointment.appointment_type]}</dd>
+                <dt>Status</dt>
+                <dd>
+                  <Pill tone={appointmentStatus[nextAppointment.status].tone}>
+                    {appointmentStatus[nextAppointment.status].label}
+                  </Pill>
+                </dd>
+              </dl>
+              <p className="muted small" style={{ marginTop: 10 }}>
+                You can book another visit once this one is over. Need a different time? Cancel it
+                under Appointments, then book again.
+              </p>
             </Card>
           )}
 
@@ -408,26 +445,27 @@ export function RequestDetailPage() {
             <p className="muted small mb-2">
               Attach diagnostic photos or X-rays. Files are stored securely with encrypted access.
             </p>
-            <div className="cluster gap-2 mb-3">
-              <select
-                value={uploadDocType}
-                onChange={(e) =>
-                  setUploadDocType(e.target.value as 'photo' | 'xray' | 'report' | 'other')
-                }
-              >
-                <option value="photo">Photo</option>
-                <option value="xray">X-ray</option>
-                <option value="report">Lab report</option>
-                <option value="other">Other</option>
-              </select>
-              <label className="btn btn-sm btn-ghost" style={{ cursor: 'pointer' }}>
-                Choose file
+            <div className="form-grid mb-3">
+              <Field label="Document type">
+                <select
+                  value={uploadDocType}
+                  onChange={(e) =>
+                    setUploadDocType(e.target.value as 'photo' | 'xray' | 'report' | 'other')
+                  }
+                >
+                  <option value="photo">Photo</option>
+                  <option value="xray">X-ray</option>
+                  <option value="report">Lab report</option>
+                  <option value="other">Other</option>
+                </select>
+              </Field>
+              <Field label="File" hint="JPG, PNG or PDF, up to 20 MB.">
                 <input
                   type="file"
-                  style={{ display: 'none' }}
+                  accept=".jpg,.jpeg,.png,.pdf"
                   onChange={(e) => void handleFileUpload(e)}
                 />
-              </label>
+              </Field>
             </div>
             {docList.length === 0 ? (
               <p className="muted small">No documents attached yet.</p>
@@ -499,21 +537,18 @@ export function RequestDetailPage() {
           <p className="hint">
             Pay consultation fee or initial treatment deposit securely via Paystack.
           </p>
-          <Field label="Amount (NGN)">
-            <input
-              type="number"
-              min={1000}
-              max={5000000}
-              step={500}
-              value={payAmount}
-              onChange={(e) => setPayAmount(Number(e.target.value))}
-            />
+          <Field label="Amount (NGN)" hint="Whole naira, at least 1,000.">
+            <NumberField value={payAmount} onValueChange={setPayAmount} max={5_000_000} required />
           </Field>
           <div className="btn-row">
             <Button variant="ghost" onClick={() => setPayModalOpen(false)}>
               Cancel
             </Button>
-            <Button busy={initPayment.isPending} onClick={() => initPayment.mutate()}>
+            <Button
+              busy={initPayment.isPending}
+              disabled={!payAmount || Number(payAmount) < 1000}
+              onClick={() => initPayment.mutate()}
+            >
               Initialize payment
             </Button>
           </div>

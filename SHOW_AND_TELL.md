@@ -79,6 +79,20 @@ All seeded accounts use password: **`CareBridge!2026`**
 7. Select `Dr Folake Balogun`, set role to **Clinician** (or **Owner** / **Scheduler**), and click **Add member**.
    - **What happens:** Dr Folake is now legally and cryptographically linked to Lekki Smiles Dental. She can now log in, receive incoming dental requests in her queue, and manage patient appointments.
 
+#### Step 0.4: Onboard a Brand-New Clinic Yourself (Self-Registration)
+1. Open **`/register`** and select **"Clinic / provider staff"**.
+2. A **"Your facility"** panel appears. Fill in: **Clinic name** (`Victoria Island Smiles`), **Registered (legal) name** (`VI Smiles Dental Ltd`), **Registration number** (`MDCN/R/98765`), **Address**, and **Specialties** (comma separated, e.g. `dentistry, endodontics`).
+3. Add your personal details, accept the agreements and click **Submit for verification**.
+   - **What happens:** One transaction creates the account (**`pending`**), the facility (**`verification_status: pending`**) and your **`owner`** membership of it, audited as `PROVIDER_SELF_REGISTERED`. The clinic is **not** in the public directory, cannot be booked, and cannot receive queue items. You cannot log in yet.
+4. As **admin**, verify the facility (**Providers** → *Verify*) and activate the owner account (**Users** → *Approve*) — exactly as in Step 0.3.
+5. Log in as the new owner and open **`/provider/team`**.
+   - Search staff accounts by name or email (`GET /staff-accounts`), pick one, choose **Clinician**, **Scheduler** or **Receptionist**, and click **Add to team**. The invitee is activated if they were `pending` and receives a `team_invite` notification. Click **Remove** next to a member to unlink them.
+   - **Governance:** Only the clinic **owner** can add or remove members; the owner's own membership cannot be removed this way; a clinic still awaiting verification gets `409 PROVIDER_NOT_VERIFIED`; a suspended account gets `409 ACCOUNT_SUSPENDED`. Every change is audited (`PROVIDER_MEMBER_SET`, `PROVIDER_MEMBER_REMOVED`, `USER_ACTIVATED`). No admin action is needed per team member.
+
+#### Step 0.5: Staff Who Belong to More Than One Clinic
+- A staff member with memberships of two or more verified clinics sees an **Active clinic** dropdown in the top bar.
+- **What to Observe:** The request queue, appointments, offers and capacity pages all follow the selected clinic (`?provider_id=`), and the choice survives a page refresh (session storage). Staff with a single clinic see no dropdown; the API refuses a `provider_id` for a clinic you do not belong to (`403 FORBIDDEN`).
+
 ---
 
 ## 2. Complete End-to-End Walkthrough (18 Chronological Steps)
@@ -97,7 +111,8 @@ All seeded accounts use password: **`CareBridge!2026`**
   2. Filter by city: **Lagos**.
 - **What to Observe:**
   - Verified Lagos dental practices appear (*Lekki Smiles Dental* on Admiralty Way, Lekki Phase 1; *Ikeja Dental Centre* on Allen Avenue, Ikeja).
-  - Unverified or suspended clinics are excluded.
+  - Unverified or suspended clinics are excluded, including clinics that registered themselves and are still awaiting verification.
+  - Every card has a **Request care here** button: it opens `/patient/new?providerId=<id>` so the patient can skip bidding and send the request straight to that clinic (see Step 3b).
 
 #### Step 2: Emergency Symptom Safety Check (The Redirection Rail)
 - **Actor:** Patient (`patient@carebridge.local`)
@@ -121,13 +136,26 @@ All seeded accounts use password: **`CareBridge!2026`**
   1. Toggle: **"No emergency symptoms"**.
   2. Urgency: Select **Soon** (or **Urgent**).
   3. Service requested: `Root Canal Assessment`.
-  4. Preferred area: `Lekki Phase 1`.
+  4. Area: fixed to `Lagos` (the pilot's only covered city — the field is read-only).
   5. Description: `"Severe throbbing pain in lower right first molar for two days. Pain increases with hot liquids."`
   6. Click **Send request**.
 - **What to Observe:**
   - Request is stored with status **`submitted`**.
   - Append-only audit record `CARE_REQUEST_CREATED` is logged inside the transaction.
   - Redirected to `/patient/requests/:id` with a green confirmation banner.
+
+#### Step 3b: Sending a Request Straight to a Chosen Clinic (Skip the Bidding)
+- **Actor:** Patient (`patient@carebridge.local`)
+- **URL:** `/providers` → **Request care here** → `/patient/new?providerId=2`
+- **Actions:**
+  1. Pick a clinic in the public directory and click **Request care here**.
+  2. The form shows a blue **"You chose …"** banner naming the clinic, and the matching step is skipped.
+  3. Fill in the request as in Step 3 and click **Send request**.
+- **What to Observe:**
+  - The API stores the request as `submitted`, then moves it to **`provider_accepted`** through the state machine, audited as `CARE_REQUEST_ASSIGNED` with `{ directed: true }`. The response is `201 { id, status: 'provider_accepted' }`.
+  - Only that clinic is told (`request_directed` notification to its owners, clinicians and schedulers). The request does **not** appear in any other clinic's open queue, and no offer is needed.
+  - The patient's request page shows the clinic under **Your provider** straight away.
+  - **Guard rails:** an unknown, unverified, suspended, wrong-specialty or out-of-city clinic is `404 NOT_FOUND` and **no request is stored** — the form falls back to open matching. Emergency symptoms still return `422 EMERGENCY_REDIRECT`.
 
 #### Step 4: Intelligent Clinic Match Ranking
 - **Actor:** Patient or Operator
@@ -199,6 +227,19 @@ All seeded accounts use password: **`CareBridge!2026`**
   - Appointment is created with status **`booked`**.
   - The chosen slot atomically switches to **`booked`** linked to this appointment.
   - **Double-Booking Guard:** If another user attempts to book the same time or slot, the database row-lock serializes the check and returns `409 SLOT_UNAVAILABLE`.
+  - While an appointment is still upcoming (`booked` or `confirmed` and in the future), the request page replaces the booking form with an **Upcoming appointment** card — time, type, clinic and status — so a patient cannot stack visits. Once that visit is completed or cancelled the form comes back.
+
+#### Step 8b: The Clinic Runs the Visit (Unlocks Everything Clinical)
+- **Actor:** Clinic Staff (`owner.lekki@carebridge.local`)
+- **URL:** `/provider/appointments`
+- **Actions:**
+  1. Click **Confirm** on the booked assessment → `booked → confirmed`.
+  2. When the patient arrives, click **Check in** → `confirmed → checked_in`.
+  3. When the consultation is over, click **Complete** → `checked_in → completed`.
+- **What to Observe:**
+  - **Clinical governance rail:** cost estimates, specialist referrals, **Treatment planned** and **Start treatment** all require at least one appointment for that request at `checked_in` or `completed`. Until then those buttons are disabled in the UI (with the reason on hover) and the API refuses them with `409 VISIT_REQUIRED`, writing nothing.
+  - `GET /requests/assigned` reports the count as `assessments_completed` (0 → 1) on each patient card.
+  - Booking an appointment, **Start assessment** and **Complete (no treatment needed)** are deliberately *not* gated.
 
 ---
 
@@ -208,7 +249,7 @@ All seeded accounts use password: **`CareBridge!2026`**
 - **Actor:** Clinic Staff (`owner.lekki@carebridge.local`)
 - **URL:** `/provider/patients` (My Patients)
 - **Actions:**
-  1. Locate the patient's card and click **Issue estimate**.
+  1. Locate the patient's card and click **Issue estimate** (enabled only after Step 8b — the visit has been checked in or completed).
   2. Amount: `45,000` NGN.
   3. Inclusions: `"Digital periapical X-ray, pulp vitality diagnostic, local anesthesia"`.
   4. Exclusions: `"Permanent crown restoration, prescription antibiotics"`.
@@ -216,6 +257,7 @@ All seeded accounts use password: **`CareBridge!2026`**
 - **What to Observe:**
   - An estimate record is created with status `issued`.
   - Notification sent to the patient via in-app inbox and SMS.
+  - The amount field has no browser spinner: it is a right-aligned, thousands-grouped numeric text field, digits only, capped at 10,000,000 and refusing anything under 1,000 NGN.
 
 #### Step 10: Patient Reviews & Approves Cost Estimate
 - **Actor:** Patient (`patient@carebridge.local`)
@@ -262,9 +304,9 @@ All seeded accounts use password: **`CareBridge!2026`**
 - **Actor:** Clinic Staff (`owner.lekki@carebridge.local`)
 - **URL:** `/provider/patients`
 - **Actions:**
-  1. Click **Start assessment** → Status transitions to **`assessment`**.
-  2. After physical examination, click **Treatment planned** → Status moves to **`treatment_planned`**.
-  3. Click **Start treatment** → Status moves to **`in_progress`**.
+  1. Click **Start assessment** → Status transitions to **`assessment`** (allowed before the visit: it is paperwork, not treatment).
+  2. After physical examination, click **Treatment planned** → Status moves to **`treatment_planned`**. Requires the completed visit from Step 8b, otherwise `409 VISIT_REQUIRED`.
+  3. Click **Start treatment** → Status moves to **`in_progress`**. Gated the same way.
 - **What to Observe:**
   - The visual timeline on the patient's portal advances at every stage.
   - Patient receives progress notifications without revealing sensitive clinical details in alerts.
@@ -273,7 +315,7 @@ All seeded accounts use password: **`CareBridge!2026`**
 - **Actor:** Clinic Staff (`owner.lekki@carebridge.local`)
 - **URL:** `/provider/patients`
 - **Actions:**
-  1. Patient requires specialist orthodontics or complex surgery. Click **Refer patient**.
+  1. Patient requires specialist orthodontics or complex surgery. Click **Refer patient** (also gated on the completed visit — `409 VISIT_REQUIRED` before it).
   2. Receiving Clinic: Select *Ikeja Dental Centre*.
   3. Referred Specialty: `Orthodontic Consultation`.
   4. Clinical Summary: `"Patient completed primary endodontic stabilization. Requires orthodontic alignment for class II malocclusion."`
@@ -320,7 +362,7 @@ All seeded accounts use password: **`CareBridge!2026`**
 - **Actor:** Admin (`admin@carebridge.local`)
 - **URL:** `/ops/audit-logs`
 - **Actions:**
-  1. Filter by action: `OFFER_ACCEPTED`, `APPOINTMENT_BOOKED`, `REFERRAL_SENT`, or `PAYMENT_COMPLETED`.
+  1. Filter by action: `OFFER_ACCEPTED`, `APPOINTMENT_BOOKED`, `REFERRAL_SENT`, `PAYMENT_COMPLETED`, `CARE_REQUEST_ASSIGNED`, `PROVIDER_SELF_REGISTERED`, `PROVIDER_MEMBER_SET`, or `PROVIDER_MEMBER_REMOVED`.
   2. Filter by entity: `care_request`, `payment`, `clinical_referral`.
 - **What to Observe:**
   - Complete, immutable ledger of every write operation, actor ID, email, IP address, and non-clinical metadata.
@@ -343,10 +385,11 @@ All seeded accounts use password: **`CareBridge!2026`**
 
 ## 4. Key Talking Points for Clinical Governance & Stakeholders
 
-When presenting CareBridge to healthcare partners, hospital directors, or NDPC regulators, emphasize these five architectural tenets:
+When presenting CareBridge to healthcare partners, hospital directors, or NDPC regulators, emphasize these six architectural tenets:
 
 1. **Strict Entity Separation:** A care request, an offer, a referral, an appointment, and a treatment are separate legal records with independent lifecycles. Accepting an offer assigns a provider; it does *not* create an appointment.
 2. **Clinical Safety Rail:** Emergency symptoms are refused with clear 112 hotline guidance and never queued.
 3. **Real Capacity vs. Guesses:** Appointments lock into clinic-verified availability slots rather than unvalidated free-text timestamps.
 4. **NDPA 2023 Compliance by Design:** Terms, privacy policies, and data-sharing consents are tracked with append-only history. Sensitive clinical descriptions and referral summaries are redacted from server logs, audit logs, and push notifications.
 5. **Logistics Coordination, Not Automated Diagnosis:** CareBridge connects verified healthcare logistics; clinical diagnosis and treatment choices belong exclusively to licensed healthcare professionals.
+6. **Nothing Clinical Before the Visit:** Quoting a price, referring to a specialist or planning treatment is refused until a clinician has actually seen the patient (`checked_in` or `completed` appointment). The rule is enforced in the API, audited, and reflected by disabled controls in the UI — not by hope.

@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router';
 import { homePathFor, useAuth } from '../../auth/authContext';
 import { cleanIdentifier } from '../../lib/text';
-import { Button, Card, ErrorNote, Field } from '../../components/ui';
+import { Button, Card, ErrorNote, Field, PasswordField } from '../../components/ui';
 
 export function LoginPage() {
   const { user, login } = useAuth();
@@ -44,13 +44,7 @@ export function LoginPage() {
             />
           </Field>
           <Field label="Password">
-            <input
-              type="password"
-              autoComplete="current-password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
+            <PasswordField required value={password} onValueChange={setPassword} />
           </Field>
           <ErrorNote error={error} />
           <Button type="submit" busy={busy}>

@@ -160,8 +160,16 @@ Two layers, both mandatory:
    Operators and admins pass this check (they coordinate on CareBridge's behalf).
 
 Rules:
-- Self-registration can only create `patient` or `provider_staff`. Provider staff start **pending** and
-  can't sign in until an admin activates them and links them to a verified provider.
+- Self-registration can only create `patient` or `provider_staff`, and every account starts the way the API
+  says it does: patients `active`, provider staff **pending** (they can't sign in until activated).
+- **Clinic self-onboarding:** a `provider_staff` may register their own facility (`clinic` on
+  `POST /auth/register`). One transaction creates the pending user, a **pending** provider and an `owner`
+  membership, audited `PROVIDER_SELF_REGISTERED`. Nothing is public and the owner can't sign in until an admin
+  verifies the facility **and** activates the account. After that the `owner` manages their own team
+  (`GET`/`POST /providers/:id/team`, `DELETE /providers/:id/team/:userId`, `GET /staff-accounts`) for
+  `clinician`/`scheduler`/`receptionist` — no admin step per member. Admin linking (`POST
+  /admin/providers/:id/members`) stays for staff who registered without facility details. `owner` is never
+  appointable through the team endpoints, and an owner's own membership can't be removed there.
 - `authenticate` reloads the user on every request, so suspension takes effect immediately.
 - JWTs carry only `sub` (user id) and `role`. Never put PII or clinical data in a token.
 - Every permission rule gets a test proving both the allowed and the denied case.
@@ -175,6 +183,13 @@ Rules:
   (assessment → treatment planned → in treatment → completed).
 - **Every status change goes through `src/lib/stateMachine.ts`** (`assertTransition`). To add a status or
   transition: state machine first, then a migration for the ENUM, then the code, then the web labels.
+- **Post-visit governance.** Cost estimates, specialist referrals, `plan-treatment` and `start-treatment`
+  need at least one appointment for that request with status `checked_in` or `completed`
+  (`assertVisitHappened` → `409 VISIT_REQUIRED`, nothing written). Booking, `start-assessment` and `complete`
+  are not gated. Check permissions and the transition **first**, so a wrong role still gets 403.
+- **Patients may pick a clinic.** `POST /requests` with `target_provider_id` routes the request straight to that
+  verified clinic (state machine `submitted → provider_accepted`, audited, `request_directed` notification) and
+  keeps it out of the open queue. An unusable target is `404` with no row stored.
 - **Emergencies are never queued.** `has_emergency_symptoms: true` returns 422 `EMERGENCY_REDIRECT`.
   The guidance text must be approved by clinical governance before launch.
 - Only verified + active providers appear publicly, receive queue items, or can be booked.

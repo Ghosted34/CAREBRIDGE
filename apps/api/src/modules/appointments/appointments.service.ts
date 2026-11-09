@@ -1,5 +1,5 @@
 import type { z } from 'zod';
-import { pool, withTransaction } from '../../db/pool.js';
+import { pool, withTransaction, type Db } from '../../db/pool.js';
 import { assertCanActForProvider, isPlatformStaff, memberProviderIds } from '../../lib/access.js';
 import { audit } from '../../lib/audit.js';
 import { AppError } from '../../lib/errors.js';
@@ -19,6 +19,20 @@ const BOOKABLE_REQUEST_STATUSES = [
   'in_progress',
 ];
 const MAX_DURATION_MS = 8 * 60 * 60 * 1000;
+
+/**
+ * Clinical governance (post-visit only): cost estimates, specialist referrals and treatment
+ * planning may only happen once the patient has been seen for this care request — at least one
+ * appointment `checked_in` or `completed`. Called inside the caller's transaction.
+ */
+export async function assertVisitHappened(db: Db, careRequestId: number): Promise<void> {
+  if ((await repo.countSeenForRequest(db, careRequestId)) === 0) {
+    throw AppError.conflict(
+      'VISIT_REQUIRED',
+      'The patient must be seen (an appointment checked in or completed) before this step',
+    );
+  }
+}
 
 /**
  * Book with the provider assigned to the request. Bookings for one provider are
@@ -107,10 +121,16 @@ export async function book(c: Ctx, input: z.infer<typeof BookAppointmentBody>) {
   });
 }
 
-export async function listMine(c: Ctx, page: Pagination) {
+export async function listMine(c: Ctx, page: Pagination, providerId?: number) {
   if (c.user.role === 'patient') return repo.list(pool, { ...page, patientId: c.user.id });
-  if (isPlatformStaff(c.user)) return repo.list(pool, page);
-  return repo.list(pool, { ...page, providerIds: await memberProviderIds(pool, c.user.id) });
+  if (isPlatformStaff(c.user)) return repo.list(pool, { ...page, providerId });
+  // Staff may only narrow the list to a clinic they actually belong to.
+  const mine = await memberProviderIds(pool, c.user.id);
+  if (providerId !== undefined) {
+    if (!mine.includes(providerId)) throw AppError.forbidden();
+    return repo.list(pool, { ...page, providerId });
+  }
+  return repo.list(pool, { ...page, providerIds: mine });
 }
 
 type ApptStatus = 'confirmed' | 'cancelled' | 'checked_in' | 'completed' | 'no_show';

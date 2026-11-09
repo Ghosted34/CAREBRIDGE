@@ -22,6 +22,7 @@ import { ProviderAppointmentsPage } from './features/provider/ProviderAppointmen
 import { ProviderOffersPage } from './features/provider/ProviderOffersPage';
 import { QueuePage } from './features/provider/QueuePage';
 import { ReferralsPage } from './features/provider/ReferralsPage';
+import { TeamPage } from './features/provider/TeamPage';
 import { HomePage } from './features/public/HomePage';
 import { ProvidersPage } from './features/public/ProvidersPage';
 
@@ -69,6 +70,7 @@ export function App() {
         <Route path="provider/capacity" element={provider(<CapacityPage />)} />
         <Route path="provider/referrals" element={provider(<ReferralsPage />)} />
         <Route path="provider/offers" element={provider(<ProviderOffersPage />)} />
+        <Route path="provider/team" element={provider(<TeamPage />)} />
 
         <Route path="ops" element={ops(<OverviewPage />)} />
         <Route path="ops/queue" element={ops(<QueuePage />)} />

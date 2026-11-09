@@ -1,4 +1,11 @@
 import { z } from 'zod';
+import { Pagination } from '../../lib/validate.js';
+
+/** `GET /appointments/mine` — staff may scope the list to one of their clinics. */
+export const MineQuery = Pagination.extend({
+  provider_id: z.coerce.number().int().positive().optional(),
+});
+export type MineQuery = z.infer<typeof MineQuery>;
 
 export const BookAppointmentBody = z.object({
   care_request_id: z.number().int().positive(),

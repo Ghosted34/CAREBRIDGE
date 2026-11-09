@@ -1,6 +1,6 @@
 import { pool, withTransaction, type Row } from '../../db/pool.js';
 import { assertCanActForProvider, isPlatformStaff, memberProviderIds } from '../../lib/access.js';
-import type { Pagination } from '../../lib/validate.js';
+import type { MineQuery } from './offers.schema.js';
 import { audit } from '../../lib/audit.js';
 import { AppError } from '../../lib/errors.js';
 import type { Ctx } from '../../lib/http.js';
@@ -151,7 +151,17 @@ export async function withdraw(c: Ctx, offerId: number) {
 }
 
 /** Provider staff: offers made by their providers. Platform staff: all offers. */
-export async function listMine(c: Ctx, page: Pagination) {
-  const providerIds = isPlatformStaff(c.user) ? null : await memberProviderIds(pool, c.user.id);
-  return repo.listForProviders(pool, providerIds, page);
+export async function listMine(c: Ctx, q: MineQuery) {
+  let providerIds = isPlatformStaff(c.user) ? null : await memberProviderIds(pool, c.user.id);
+  // The clinic switcher narrows the list; staff may only narrow to a clinic they belong to.
+  if (q.provider_id !== undefined && !isPlatformStaff(c.user)) {
+    if (!(providerIds ?? []).includes(q.provider_id)) throw AppError.forbidden();
+    providerIds = [q.provider_id];
+  }
+  return repo.listForProviders(
+    pool,
+    providerIds,
+    q,
+    isPlatformStaff(c.user) ? q.provider_id : undefined,
+  );
 }

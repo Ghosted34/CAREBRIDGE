@@ -30,7 +30,7 @@ erDiagram
 | `users` | Every account | `role` patient/provider_staff/operator/admin · `status` pending/active/suspended · `uq_users_email`, `uq_users_phone` | ✅ |
 | `providers` | Clinics, hospitals, specialists, diagnostic centres | `verification_status` pending/verified/rejected/suspended · `specialties` JSON array · `uq_providers_registration_number` | ✅ |
 | `provider_users` | Staff ↔ provider membership | PK (`provider_id`,`user_id`) · `provider_role` owner/clinician/scheduler/receptionist | ✅ |
-| `care_requests` | A patient's request — start of every journey | `status` (see below) · `urgency` · `assigned_provider_id` (set when an offer is accepted) · `description` is **clinical text** | ✅ |
+| `care_requests` | A patient's request — start of every journey | `status` (see below) · `urgency` · `assigned_provider_id` (set when an offer is accepted, or when a patient directs the request at a clinic) · `description` is **clinical text** | ✅ |
 | `provider_offers` | A provider offering to take a request | `uq_provider_offers_request_provider` (one per provider per request) · `status` | ✅ |
 | `appointments` | Scheduled visits | `chk_appointments_time_order` (end > start) · `idx_appointments_provider_time` for overlap checks | ✅ |
 | `provider_schedules` | Weekly clinic opening hours | `uq_provider_schedules_day`, `day_of_week` (0-6), `slot_duration_minutes` | ✅ |
@@ -47,6 +47,20 @@ erDiagram
 All tables have `created_at`; mutable ones also have `updated_at` (`ON UPDATE CURRENT_TIMESTAMP`).
 Every foreign key and index is explicitly named (`fk_…`, `idx_…`, `uq_…`, `chk_…`).
 
+### How the new flows use these tables
+
+- **Clinic self-registration** writes three rows in one transaction: `users` (`role=provider_staff`,
+  `status=pending`), `providers` (`verification_status=pending`, `status=active`) and `provider_users`
+  (`provider_role=owner`), plus a `PROVIDER_SELF_REGISTERED` audit row. No new tables or columns.
+- **Team management** is `provider_users` only. An `owner` of a verified clinic inserts or deletes rows for
+  `clinician`/`scheduler`/`receptionist` (`TEAM_ROLES`); `owner` rows are never removable through that path.
+  Adding a `pending` account also flips `users.status` to `active` (audited `USER_ACTIVATED`).
+- **Directed requests** reuse `care_requests.assigned_provider_id`: the row is inserted as `submitted` and moved
+  to `provider_accepted` by the state machine, audited as `CARE_REQUEST_ASSIGNED` with `{ directed: true }`.
+- **Post-visit governance** is derived, never stored: `GET /requests/assigned` counts `appointments` for the
+  request with `status IN ('checked_in','completed')` as `assessments_completed`. Estimates, referrals and
+  treatment planning are refused (`409 VISIT_REQUIRED`) while that count is 0.
+
 ## Status machines
 
 Defined once in `apps/api/src/lib/stateMachine.ts`. Any other transition returns `409 INVALID_TRANSITION`.
@@ -57,7 +71,7 @@ Defined once in `apps/api/src/lib/stateMachine.ts`. Any other transition returns
 stateDiagram-v2
   [*] --> submitted
   submitted --> matching: first offer
-  submitted --> provider_accepted
+  submitted --> provider_accepted: patient picked a clinic in the directory
   matching --> provider_accepted: patient accepts an offer
   provider_accepted --> assessment: start-assessment
   assessment --> treatment_planned: plan-treatment

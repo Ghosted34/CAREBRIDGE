@@ -46,8 +46,65 @@ export const openapiSpec = {
     },
     '/auth/register': {
       post: {
-        summary: 'Register a new patient or provider staff account',
-        responses: { '201': { description: 'User created' } },
+        summary:
+          'Register a patient or provider staff account; provider staff may include `clinic` details to self-onboard a pending facility',
+        responses: {
+          '201': { description: 'User created (clinic sign-ups are pending verification)' },
+          '400': {
+            description: 'Facility details sent by a patient',
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
+            },
+          },
+          '409': {
+            description: 'Email, phone or registration number already registered',
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
+            },
+          },
+        },
+      },
+    },
+    '/providers/{id}/team': {
+      get: {
+        summary: 'List the members of a clinic (any member, operator, admin)',
+        security: [{ bearerAuth: [] }],
+        responses: { '200': { description: 'Team members with roles and account status' } },
+      },
+      post: {
+        summary: 'Add or re-role a team member (clinic owner of a verified facility)',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Member added, activated if they were pending' },
+          '409': {
+            description: 'Facility not verified, wrong role, suspended or self',
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
+            },
+          },
+        },
+      },
+    },
+    '/providers/{id}/team/{userId}': {
+      delete: {
+        summary: 'Remove a team member (clinic owner of a verified facility)',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Member removed' },
+          '409': {
+            description: 'Owner membership, or removing yourself',
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
+            },
+          },
+        },
+      },
+    },
+    '/staff-accounts': {
+      get: {
+        summary: 'Search provider-staff accounts a clinic owner may invite (contact details only)',
+        security: [{ bearerAuth: [] }],
+        responses: { '200': { description: 'Matching staff accounts' } },
       },
     },
     '/auth/login': {
@@ -58,10 +115,17 @@ export const openapiSpec = {
     },
     '/requests': {
       post: {
-        summary: 'Submit a new care request with triage',
+        summary:
+          'Submit a new care request with triage; optional `target_provider_id` sends it straight to a clinic the patient chose',
         security: [{ bearerAuth: [] }],
         responses: {
-          '201': { description: 'Request created' },
+          '201': { description: 'Request created (`provider_accepted` when directed at a clinic)' },
+          '404': {
+            description: 'The chosen clinic cannot take this request; nothing stored',
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
+            },
+          },
           '422': { description: 'Emergency redirect' },
         },
       },
@@ -86,9 +150,17 @@ export const openapiSpec = {
     },
     '/requests/{id}/referrals': {
       post: {
-        summary: 'Create a clinician-to-clinician referral',
+        summary: 'Create a clinician-to-clinician referral (needs a completed or checked-in visit)',
         security: [{ bearerAuth: [] }],
-        responses: { '201': { description: 'Referral sent' } },
+        responses: {
+          '201': { description: 'Referral sent' },
+          '409': {
+            description: 'VISIT_REQUIRED: the patient has not been seen yet',
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
+            },
+          },
+        },
       },
       get: {
         summary: 'List referrals for a request',
@@ -98,9 +170,17 @@ export const openapiSpec = {
     },
     '/requests/{id}/estimates': {
       post: {
-        summary: 'Issue a cost estimate for treatment',
+        summary: 'Issue a cost estimate for treatment (needs a completed or checked-in visit)',
         security: [{ bearerAuth: [] }],
-        responses: { '201': { description: 'Estimate issued' } },
+        responses: {
+          '201': { description: 'Estimate issued' },
+          '409': {
+            description: 'VISIT_REQUIRED: the patient has not been seen yet',
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
+            },
+          },
+        },
       },
       get: {
         summary: 'List cost estimates for a request',

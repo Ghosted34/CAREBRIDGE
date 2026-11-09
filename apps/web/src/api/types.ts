@@ -91,6 +91,7 @@ export interface CareRequest {
   urgency: Urgency;
   status: RequestStatus;
   assigned_provider_id: number | null;
+  assigned_provider: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -112,6 +113,11 @@ export interface AssignedRequest extends QueueItem {
   patient_name: string;
   patient_phone: string;
   updated_at: string;
+  /**
+   * Appointments for this request where the patient was seen (`checked_in`/`completed`).
+   * Clinical governance: estimates, referrals and treatment planning need at least one.
+   */
+  assessments_completed: number;
 }
 
 export interface Offer {
@@ -197,6 +203,29 @@ export interface ProviderMember {
   status: UserStatus;
   provider_role: ProviderRole;
   created_at: string;
+}
+
+/** Roles a clinic owner can appoint themselves; `owner` is granted by CareBridge. */
+export type TeamRole = 'clinician' | 'scheduler' | 'receptionist';
+
+/** A provider-staff account a clinic owner may invite (contact details only). */
+export interface StaffAccount {
+  id: number;
+  full_name: string;
+  email: string;
+  status: UserStatus;
+}
+
+/** Facility details submitted by a clinic registering itself. */
+export interface ClinicRegistration {
+  legal_name: string;
+  display_name: string;
+  provider_type: Provider['provider_type'];
+  registration_number: string;
+  city: string;
+  address: string;
+  specialties: string[];
+  services?: string[];
 }
 
 export type ConsentType = 'terms' | 'privacy' | 'data_sharing' | 'marketing';

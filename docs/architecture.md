@@ -76,6 +76,8 @@ switched-off channel, a missing address or a suspended user are `skipped`.
 | Journey step (assessment, plan, treatment, completed) | the patient | in-app |
 | Request cancelled | clinics with an open offer, and the assigned clinic | in-app |
 | Staff account approved | that staff member | in-app, email |
+| Added to a clinic team | that staff member | in-app, email |
+| Request directed at a clinic | owners/clinicians/schedulers of that clinic only | in-app, email |
 
 Messages never contain clinical text: payloads hold only IDs, clinic names and times (enforced in code and
 tested), and SMS text is deliberately generic. Templates live in `modules/notifications/templates.ts`.
@@ -89,6 +91,9 @@ Two layers, checked on every request:
 2. **Provider membership** for anything provider-scoped: the user must be linked to that provider
    (`provider_users`) with a suitable role (`owner`, `clinician`, `scheduler`, `receptionist`), and the provider
    must be verified and active. Operators/admins pass this check.
+   Where a pending clinic needs a clear answer rather than a bare 403, services check the membership role first
+   and the facility's verification second (`providers.service.ts`), so an owner hears
+   `409 PROVIDER_NOT_VERIFIED`.
 
 | Action | Who |
 |---|---|
@@ -97,6 +102,7 @@ Two layers, checked on every request:
 | Book an appointment | the patient; any staff of the assigned provider; operator; admin |
 | Confirm / check in / complete / no-show | staff of the provider; operator; admin |
 | Progress the clinical journey | owner or clinician of the assigned provider; operator; admin |
+| Add / remove clinic team members | `owner` of that verified clinic; operator; admin |
 | Verify providers, approve staff, link members | admin |
 
 The API reloads the user on every request, so suspending an account takes effect immediately.

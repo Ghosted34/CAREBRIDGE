@@ -4,6 +4,7 @@ import { audit } from '../../lib/audit.js';
 import { AppError } from '../../lib/errors.js';
 import type { Ctx } from '../../lib/http.js';
 import { assertTransition } from '../../lib/stateMachine.js';
+import { assertVisitHappened } from '../appointments/appointments.service.js';
 import * as notifications from '../notifications/notifications.service.js';
 import * as requestsRepo from '../requests/requests.repo.js';
 import * as repo from './estimates.repo.js';
@@ -23,6 +24,8 @@ export async function create(ctx: Ctx, careRequestId: number, body: CreateEstima
 
     const providerId = request.assigned_provider_id;
     await assertCanActForProvider(tx, ctx.user, providerId, ['owner', 'clinician', 'scheduler']);
+    // Clinical governance: pricing follows an in-person assessment, never precedes it.
+    await assertVisitHappened(tx, careRequestId);
 
     const validUntil = body.valid_until ? new Date(body.valid_until) : null;
     const id = await repo.insert(tx, {

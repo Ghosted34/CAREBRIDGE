@@ -114,6 +114,58 @@ describe('NewRequestPage', () => {
     expect(callsTo(fetchFn, 'POST /consents')).toEqual([]);
   });
 
+  it('sends a directory request straight to the chosen clinic', async () => {
+    const fetchFn = mockApi({
+      ...base(),
+      'GET /providers/3': {
+        body: {
+          data: {
+            id: 3,
+            display_name: 'Ikeja Dental',
+            provider_type: 'clinic',
+            city: 'Lagos',
+            address: '12 Awolowo Road, Ikeja',
+            specialties: ['dentistry'],
+            services: null,
+            accepting_referrals: true,
+          },
+        },
+      },
+      'POST /requests': {
+        status: 201,
+        body: { data: { id: 44, status: 'provider_accepted' } },
+      },
+    });
+    renderApp(<NewRequestPage />, {
+      route: '/patient/new?providerId=3',
+      auth: { user: patientUser },
+    });
+    expect(await screen.findByText(/You chose/)).toBeInTheDocument();
+    expect(screen.getByText('Ikeja Dental')).toBeInTheDocument();
+    await fillAndSend('No');
+    expect(await screen.findByText('request page')).toBeInTheDocument();
+    expect(callsTo(fetchFn, 'POST /requests')[0]).toMatchObject({
+      target_provider_id: 3,
+      specialty: 'dentistry',
+      has_emergency_symptoms: false,
+    });
+  });
+
+  it('falls back to open matching when the chosen clinic is gone', async () => {
+    const fetchFn = mockApi({
+      ...base(),
+      'GET /providers/9': { status: 404, body: { error: { code: 'NOT_FOUND', message: 'x' } } },
+      'POST /requests': { status: 201, body: { data: { id: 45, status: 'submitted' } } },
+    });
+    renderApp(<NewRequestPage />, {
+      route: '/patient/new?providerId=9',
+      auth: { user: patientUser },
+    });
+    expect(await screen.findByText(/isn’t available any more/)).toBeInTheDocument();
+    await fillAndSend('No');
+    expect(callsTo(fetchFn, 'POST /requests')[0]).not.toHaveProperty('target_provider_id');
+  });
+
   it('shows field errors returned by the API', async () => {
     mockApi({
       ...base(),

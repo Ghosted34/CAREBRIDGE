@@ -3,8 +3,27 @@ import { render } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { vi } from 'vitest';
-import type { Me } from '../api/types';
+import type { Me, Membership } from '../api/types';
 import { AuthContext, type AuthState } from '../auth/authContext';
+import { LoginStub } from './LoginStub';
+
+/** A verified clinic membership, for staff fixtures. */
+export const membership = (
+  provider_id: number,
+  display_name: string,
+  provider_role: Membership['provider_role'] = 'owner',
+): Membership => ({ provider_id, display_name, verification_status: 'verified', provider_role });
+
+export const staffUser: Me = {
+  id: 9,
+  full_name: 'Ngozi Owner',
+  email: 'owner@clinic.test',
+  phone: '+2348020000001',
+  role: 'provider_staff',
+  status: 'active',
+  created_at: '2026-11-01T10:00:00Z',
+  memberships: [membership(3, 'Ikeja Dental')],
+};
 
 export const patientUser: Me = {
   id: 1,
@@ -43,7 +62,7 @@ export function renderApp(
         <MemoryRouter initialEntries={[route]}>
           <Routes>
             <Route path={path} element={ui} />
-            <Route path="/login" element={<p>login page</p>} />
+            <Route path="/login" element={<LoginStub />} />
             <Route path="/patient" element={<p>patient home</p>} />
             <Route path="/patient/requests/:id" element={<p>request page</p>} />
           </Routes>

@@ -18,6 +18,45 @@ export async function insertUser(
   return r.insertId;
 }
 
+/** A clinic registering itself at sign-up: always `pending` until CareBridge verifies it. */
+export async function insertPendingProvider(
+  db: Db,
+  p: {
+    legal_name: string;
+    display_name: string;
+    provider_type: string;
+    registration_number: string;
+    city: string;
+    address: string;
+    specialties: string[];
+    services?: string[];
+  },
+) {
+  const [r] = await db.execute<Result>(
+    `INSERT INTO providers(legal_name, display_name, provider_type, registration_number,
+       verification_status, status, city, address, specialties, services)
+     VALUES (?, ?, ?, ?, 'pending', 'active', ?, ?, ?, ?)`,
+    [
+      p.legal_name,
+      p.display_name,
+      p.provider_type,
+      p.registration_number,
+      p.city,
+      p.address,
+      JSON.stringify(p.specialties),
+      p.services ? JSON.stringify(p.services) : null,
+    ],
+  );
+  return r.insertId;
+}
+
+export async function insertMembership(db: Db, providerId: number, userId: number, role: string) {
+  await db.execute(
+    'INSERT INTO provider_users(provider_id, user_id, provider_role) VALUES (?, ?, ?)',
+    [providerId, userId, role],
+  );
+}
+
 export async function findUserByEmail(db: Db, email: string) {
   const [rows] = await db.execute<Row[]>(
     'SELECT id, full_name, email, password_hash, role, status FROM users WHERE email = ?',

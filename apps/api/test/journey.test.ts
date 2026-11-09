@@ -4,6 +4,7 @@ import {
   acceptedRequest,
   api,
   auditActions,
+  completeVisit,
   inHours,
   makeProvider,
   makeRequest,
@@ -24,6 +25,37 @@ describe('assigned requests', () => {
     expect(r.body.data.map((x: { id: number }) => x.id)).toEqual([requestId]);
     expect(r.body.data[0]).toHaveProperty('patient_name');
     expect(r.body.data[0]).toHaveProperty('patient_phone');
+    // Drives the post-visit gating in the UI: nothing has happened in the clinic yet.
+    expect(r.body.data[0].assessments_completed).toBe(0);
+  });
+
+  it('counts completed visits so the UI can gate estimates and referrals', async () => {
+    const { patient, staff, requestId } = await acceptedRequest();
+    await completeVisit(patient, staff, requestId);
+    const r = await api.get('/api/v1/requests/assigned').set(staff.auth);
+    expect(r.body.data[0]).toMatchObject({ id: requestId, assessments_completed: 1 });
+  });
+
+  it('scopes the list to one clinic, and refuses a clinic the caller is not a member of', async () => {
+    const mine = await acceptedRequest();
+    const other = await acceptedRequest();
+    const scoped = await api
+      .get(`/api/v1/requests/assigned?provider_id=${mine.providerId}`)
+      .set(mine.staff.auth);
+    expect(scoped.body.data.map((x: { id: number }) => x.id)).toEqual([mine.requestId]);
+    // Denied case: another clinic's patients must not be reachable by guessing an id.
+    const denied = await api
+      .get(`/api/v1/requests/assigned?provider_id=${other.providerId}`)
+      .set(mine.staff.auth);
+    expect(denied.status).toBe(403);
+    const operator = await makeUser('operator');
+    expect(
+      (
+        await api
+          .get(`/api/v1/requests/assigned?provider_id=${other.providerId}`)
+          .set(operator.auth)
+      ).body.data.map((x: { id: number }) => x.id),
+    ).toEqual([other.requestId]);
   });
 
   it('staff without memberships see nothing; operators see all; patients are forbidden', async () => {
@@ -42,10 +74,23 @@ describe('assigned requests', () => {
 
 describe('journey progress', () => {
   it('clinician moves the request through assessment → plan → treatment → completed', async () => {
-    const { providerId, requestId } = await acceptedRequest();
+    const { patient, staff, providerId, requestId } = await acceptedRequest();
     const clinician = await makeStaff(providerId, 'clinician');
+    const start = await api
+      .post(`/api/v1/requests/${requestId}/start-assessment`)
+      .set(clinician.auth);
+    expect(start.status).toBe(200);
+    expect(start.body.data.status).toBe('assessment');
+
+    // Clinical governance: treatment planning and treatment follow a visit, never precede it.
+    const tooEarly = await api
+      .post(`/api/v1/requests/${requestId}/plan-treatment`)
+      .set(clinician.auth);
+    expect(tooEarly.status).toBe(409);
+    expect(tooEarly.body.error.code).toBe('VISIT_REQUIRED');
+
+    await completeVisit(patient, staff, requestId);
     for (const [step, status] of [
-      ['start-assessment', 'assessment'],
       ['plan-treatment', 'treatment_planned'],
       ['start-treatment', 'in_progress'],
       ['complete', 'completed'],
@@ -55,6 +100,46 @@ describe('journey progress', () => {
       expect(r.body.data.status).toBe(status);
     }
     expect(await auditActions('care_request', requestId)).toContain('CARE_REQUEST_COMPLETED');
+  });
+
+  it('a checked-in (not yet completed) appointment also unlocks treatment planning', async () => {
+    const { patient, staff, requestId } = await acceptedRequest();
+    await api.post(`/api/v1/requests/${requestId}/start-assessment`).set(staff.auth);
+    const booked = await api
+      .post('/api/v1/appointments')
+      .set(patient.auth)
+      .send({
+        care_request_id: requestId,
+        starts_at: inHours(24),
+        ends_at: inHours(25),
+        appointment_type: 'assessment',
+      });
+    await api.post(`/api/v1/appointments/${booked.body.data.id}/confirm`).set(staff.auth);
+    expect(
+      (await api.post(`/api/v1/requests/${requestId}/plan-treatment`).set(staff.auth)).status,
+    ).toBe(409);
+    await api.post(`/api/v1/appointments/${booked.body.data.id}/check-in`).set(staff.auth);
+    expect(
+      (await api.post(`/api/v1/requests/${requestId}/plan-treatment`).set(staff.auth)).status,
+    ).toBe(200);
+  });
+
+  it('a cancelled appointment does not count as a visit', async () => {
+    const { patient, staff, requestId } = await acceptedRequest();
+    await api.post(`/api/v1/requests/${requestId}/start-assessment`).set(staff.auth);
+    const booked = await api
+      .post('/api/v1/appointments')
+      .set(patient.auth)
+      .send({
+        care_request_id: requestId,
+        starts_at: inHours(24),
+        ends_at: inHours(25),
+        appointment_type: 'assessment',
+      });
+    await api.post(`/api/v1/appointments/${booked.body.data.id}/cancel`).set(patient.auth);
+    const r = await api.post(`/api/v1/requests/${requestId}/plan-treatment`).set(staff.auth);
+    expect(r.status).toBe(409);
+    expect(r.body.error.code).toBe('VISIT_REQUIRED');
   });
 
   it('assessment can complete directly; invalid jumps are 409', async () => {

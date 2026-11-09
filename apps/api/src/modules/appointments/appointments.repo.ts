@@ -34,6 +34,20 @@ export async function insert(
   return r.insertId;
 }
 
+/**
+ * Appointments for a care request where the patient was actually seen (`checked_in`/`completed`).
+ * Clinical governance: estimates, referrals and treatment planning need one of these first
+ * (see `assertVisitHappened`).
+ */
+export async function countSeenForRequest(db: Db, careRequestId: number) {
+  const [rows] = await db.execute<Row[]>(
+    `SELECT COUNT(*) AS n FROM appointments
+      WHERE care_request_id = ? AND status IN ('checked_in','completed')`,
+    [careRequestId],
+  );
+  return Number(rows[0]?.n ?? 0);
+}
+
 /** Active (booked/confirmed) appointments for a provider that overlap [start, end). */
 export async function findOverlapping(db: Db, providerId: number, start: Date, end: Date) {
   const [rows] = await db.execute<Row[]>(
@@ -53,12 +67,20 @@ export async function findById(db: Db, id: number, opts: { forUpdate?: boolean }
   return rows[0];
 }
 
-export async function list(db: Db, f: { patientId?: number; providerIds?: number[] } & Pagination) {
+export async function list(
+  db: Db,
+  f: { patientId?: number; providerId?: number; providerIds?: number[] } & Pagination,
+) {
   const where: string[] = [];
   const params: unknown[] = [];
   if (f.patientId !== undefined) {
     where.push('a.patient_user_id = ?');
     params.push(f.patientId);
+  }
+  // One clinic (the switcher's choice, or an operator narrowing the diary).
+  if (f.providerId !== undefined) {
+    where.push('a.provider_id = ?');
+    params.push(f.providerId);
   }
   if (f.providerIds !== undefined) {
     if (f.providerIds.length === 0) return [];

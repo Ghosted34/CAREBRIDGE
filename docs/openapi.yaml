@@ -18,10 +18,47 @@ paths:
           description: API is operational
   /auth/register:
     post:
-      summary: Register account (patient or provider staff)
+      summary: Register account (patient or provider staff, optionally with clinic details)
       responses:
         '201':
-          description: Account created
+          description: Account created (clinic sign-ups start pending verification)
+        '409':
+          description: Email, phone or registration number already registered
+  /providers/{id}/team:
+    get:
+      summary: List a clinic's team members
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Members with role and account status
+    post:
+      summary: Add or re-role a team member (clinic owner, verified facility)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Member added
+        '409':
+          description: PROVIDER_NOT_VERIFIED, NOT_PROVIDER_STAFF, ACCOUNT_SUSPENDED or SELF_CHANGE
+  /providers/{id}/team/{userId}:
+    delete:
+      summary: Remove a team member (clinic owner, verified facility)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Member removed
+        '409':
+          description: OWNER_CHANGE_FORBIDDEN or SELF_CHANGE
+  /staff-accounts:
+    get:
+      summary: Search provider-staff accounts a clinic owner may invite
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Matching staff accounts (id, name, email, status)
   /auth/login:
     post:
       summary: Authenticate and receive JWT
@@ -30,12 +67,14 @@ paths:
           description: Sign in successful
   /requests:
     post:
-      summary: Submit a care request
+      summary: Submit a care request (optionally directed at one clinic)
       security:
         - bearerAuth: []
       responses:
         '201':
-          description: Care request created
+          description: Care request created, or accepted by the chosen clinic
+        '404':
+          description: Chosen clinic cannot take this request; nothing stored
         '422':
           description: Emergency redirect guidance
   /requests/{id}/matches:
@@ -61,12 +100,14 @@ paths:
           description: Slot created
   /requests/{id}/referrals:
     post:
-      summary: Create specialist referral
+      summary: Create specialist referral (after the patient has been seen)
       security:
         - bearerAuth: []
       responses:
         '201':
           description: Referral sent
+        '409':
+          description: VISIT_REQUIRED
     get:
       summary: List referrals for request
       security:
@@ -76,12 +117,14 @@ paths:
           description: Referral records
   /requests/{id}/estimates:
     post:
-      summary: Issue cost estimate
+      summary: Issue cost estimate (after the patient has been seen)
       security:
         - bearerAuth: []
       responses:
         '201':
           description: Estimate issued
+        '409':
+          description: VISIT_REQUIRED
     get:
       summary: List estimates for request
       security:

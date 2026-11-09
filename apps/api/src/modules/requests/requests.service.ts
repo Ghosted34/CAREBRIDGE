@@ -8,6 +8,7 @@ import { assertTransition } from '../../lib/stateMachine.js';
 import type { Pagination } from '../../lib/validate.js';
 import * as offersRepo from '../offers/offers.repo.js';
 import * as appointmentsRepo from '../appointments/appointments.repo.js';
+import * as appointmentsService from '../appointments/appointments.service.js';
 import { assertConsents } from '../consents/consents.service.js';
 import type { AssignedQuery, CreateRequestBody, QueueQuery } from './requests.schema.js';
 import * as notifications from '../notifications/notifications.service.js';
@@ -33,8 +34,20 @@ export async function create(c: Ctx, input: z.infer<typeof CreateRequestBody>) {
   }
   // Sharing a request with providers needs current terms, privacy and data-sharing consent.
   await assertConsents(pool, c.user.id);
+  const { target_provider_id: targetProviderId, ...request } = input;
   return withTransaction(async (tx) => {
-    const id = await repo.insert(tx, { ...input, patient_user_id: c.user.id });
+    // A patient who chose a clinic in the directory is routed straight to it, if it can take them.
+    let target: Row | undefined;
+    if (targetProviderId !== undefined) {
+      target = await repo.findDirectTarget(
+        tx,
+        targetProviderId,
+        request.specialty,
+        request.preferred_city,
+      );
+      if (!target) throw AppError.notFound('Provider');
+    }
+    const id = await repo.insert(tx, { ...request, patient_user_id: c.user.id });
     await audit(tx, {
       actorUserId: c.user.id,
       action: 'CARE_REQUEST_CREATED',
@@ -42,6 +55,31 @@ export async function create(c: Ctx, input: z.infer<typeof CreateRequestBody>) {
       entityId: id,
       ip: c.ip,
     });
+    if (target) {
+      const targetId = target.id as number;
+      // The patient has already chosen, so this skips the offer round (same transition an
+      // accepted offer makes) and goes straight to the chosen clinic.
+      assertTransition('care_request', 'submitted', 'provider_accepted');
+      await repo.setStatus(tx, id, 'provider_accepted', targetId);
+      await audit(tx, {
+        actorUserId: c.user.id,
+        action: 'CARE_REQUEST_ASSIGNED',
+        entityType: 'care_request',
+        entityId: id,
+        ip: c.ip,
+        metadata: { assigned_provider_id: targetId, directed: true, from: 'submitted' },
+      });
+      const staff = await notifications.providerStaffIds(tx, targetId, [
+        'owner',
+        'clinician',
+        'scheduler',
+      ]);
+      await notifications.notify(tx, staff, 'request_directed', {
+        request_id: id,
+        provider: target.display_name as string,
+      });
+      return { id, status: 'provider_accepted' as const };
+    }
     // Tell staff of every clinic whose queue this request appears in.
     for (const provider of await repo.matchingProviders(tx, id)) {
       const staff = await notifications.providerStaffIds(tx, provider.id, [
@@ -54,15 +92,32 @@ export async function create(c: Ctx, input: z.infer<typeof CreateRequestBody>) {
         provider: provider.name,
       });
     }
-    return { id, status: 'submitted' };
+    return { id, status: 'submitted' as const };
   });
 }
 
 export const listMine = (c: Ctx, page: Pagination) => repo.listForPatient(pool, c.user.id, page);
 
+/**
+ * Which clinics a list is scoped to. `null` means "everything" (platform staff only).
+ * Staff may narrow to one clinic, but only one they belong to.
+ */
+async function scopeFor(c: Ctx, providerId?: number): Promise<number[] | null> {
+  if (isPlatformStaff(c.user)) return null;
+  const mine = await memberProviderIds(pool, c.user.id);
+  if (providerId === undefined) return mine;
+  if (!mine.includes(providerId)) throw AppError.forbidden('You are not a member of that clinic');
+  return [providerId];
+}
+
 export async function queue(c: Ctx, q: z.infer<typeof QueueQuery>) {
-  const providerIds = isPlatformStaff(c.user) ? null : await memberProviderIds(pool, c.user.id);
-  return repo.listQueue(pool, { ...q, providerIds });
+  const providerIds = await scopeFor(c, q.provider_id);
+  return repo.listQueue(pool, {
+    ...q,
+    providerIds,
+    // Platform staff may also narrow the queue to one clinic.
+    providerId: isPlatformStaff(c.user) ? q.provider_id : undefined,
+  });
 }
 
 /**
@@ -114,27 +169,49 @@ export async function cancel(c: Ctx, id: number) {
 }
 
 export async function assigned(c: Ctx, q: z.infer<typeof AssignedQuery>) {
-  const providerIds = isPlatformStaff(c.user) ? null : await memberProviderIds(pool, c.user.id);
-  return repo.listAssigned(pool, { ...q, providerIds });
+  const providerIds = await scopeFor(c, q.provider_id);
+  return repo.listAssigned(pool, {
+    ...q,
+    providerIds,
+    providerId: isPlatformStaff(c.user) ? q.provider_id : undefined,
+  });
 }
 
-/** Journey steps the assigned provider moves a request through, and the audit action for each. */
+/**
+ * Journey steps the assigned provider moves a request through, and the audit action for each.
+ * `requiresVisit` marks the steps that may only happen after the patient has been seen
+ * (an appointment `checked_in` or `completed`) — clinical governance, see VISIT_REQUIRED.
+ */
 export const JOURNEY_STEPS = {
   'start-assessment': { to: 'assessment', action: 'CARE_REQUEST_ASSESSMENT_STARTED' },
-  'plan-treatment': { to: 'treatment_planned', action: 'CARE_REQUEST_TREATMENT_PLANNED' },
-  'start-treatment': { to: 'in_progress', action: 'CARE_REQUEST_TREATMENT_STARTED' },
+  'plan-treatment': {
+    to: 'treatment_planned',
+    action: 'CARE_REQUEST_TREATMENT_PLANNED',
+    requiresVisit: true,
+  },
+  'start-treatment': {
+    to: 'in_progress',
+    action: 'CARE_REQUEST_TREATMENT_STARTED',
+    requiresVisit: true,
+  },
   complete: { to: 'completed', action: 'CARE_REQUEST_COMPLETED' },
 } as const;
 export type JourneyStep = keyof typeof JOURNEY_STEPS;
 
 /** Only clinicians/owners of the assigned provider (or platform staff) progress the clinical journey. */
 export async function progress(c: Ctx, id: number, step: JourneyStep) {
-  const { to, action } = JOURNEY_STEPS[step];
+  const { to, action, requiresVisit } = JOURNEY_STEPS[
+    step
+  ] as (typeof JOURNEY_STEPS)[JourneyStep] & {
+    requiresVisit?: boolean;
+  };
   return withTransaction(async (tx) => {
     const request = await repo.findById(tx, id, { forUpdate: true });
     if (!request || !request.assigned_provider_id) throw AppError.notFound('Care request');
     await assertCanActForProvider(tx, c.user, request.assigned_provider_id, ['owner', 'clinician']);
     assertTransition('care_request', request.status, to);
+    // Treatment planning and treatment itself follow an in-person assessment, never precede it.
+    if (requiresVisit) await appointmentsService.assertVisitHappened(tx, id);
     await repo.setStatus(tx, id, to);
     await audit(tx, {
       actorUserId: c.user.id,
@@ -179,7 +256,7 @@ export async function matches(c: Ctx, id: number) {
         specialtiesArr = [];
       }
 
-      const categoryLower = request.category.toLowerCase();
+      const categoryLower = String(request.specialty).toLowerCase();
       let clinicalFit = 10;
       if (specialtiesArr.some((s) => s.toLowerCase().includes(categoryLower))) {
         clinicalFit = 40;
@@ -194,7 +271,7 @@ export async function matches(c: Ctx, id: number) {
       const verificationScore = 20;
 
       let locationFit = 10;
-      if (p.city && request.city && p.city.toLowerCase() === request.city.toLowerCase()) {
+      if (p.city && p.city.toLowerCase() === request.preferred_city.toLowerCase()) {
         locationFit = 20;
       }
 

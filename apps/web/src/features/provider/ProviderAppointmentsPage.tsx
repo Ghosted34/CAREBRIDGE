@@ -12,6 +12,7 @@ import {
 } from '../../components/ui';
 import { appointmentStatus, appointmentType } from '../../lib/labels';
 import { formatTimeRange } from '../../lib/time';
+import { useActiveClinic } from './activeClinic';
 
 const ACTIONS: Partial<
   Record<
@@ -33,7 +34,11 @@ const ACTIONS: Partial<
 
 export function ProviderAppointmentsPage() {
   const queryClient = useQueryClient();
-  const q = useQuery({ queryKey: ['appointments', 'mine'], queryFn: api.myAppointments });
+  const { clinicId } = useActiveClinic();
+  const q = useQuery({
+    queryKey: ['appointments', 'mine', clinicId],
+    queryFn: () => api.myAppointments({ provider_id: clinicId }),
+  });
   const act = useMutation({
     mutationFn: ({ id, verb }: { id: number; verb: AppointmentVerb }) =>
       api.appointmentAction(id, verb),

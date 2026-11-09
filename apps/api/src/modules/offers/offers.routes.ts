@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { created, ctx, list, ok } from '../../lib/http.js';
-import { IdParam, Pagination, parse } from '../../lib/validate.js';
+import { IdParam, parse } from '../../lib/validate.js';
 import { allow, authenticate } from '../../middleware/auth.js';
-import { CreateOfferBody } from './offers.schema.js';
+import { CreateOfferBody, MineQuery } from './offers.schema.js';
 import * as service from './offers.service.js';
 
 export const offersRouter = Router();
@@ -43,7 +43,7 @@ offersRouter.get(
   authenticate,
   allow('provider_staff', 'operator', 'admin'),
   async (req, res) => {
-    const page = parse(Pagination, req.query);
-    list(res, await service.listMine(ctx(req), page), page);
+    const q = parse(MineQuery, req.query);
+    list(res, await service.listMine(ctx(req), q), q);
   },
 );

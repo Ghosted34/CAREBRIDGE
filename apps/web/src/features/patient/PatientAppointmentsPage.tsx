@@ -6,7 +6,7 @@ import { appointmentStatus, appointmentType } from '../../lib/labels';
 import { formatTimeRange } from '../../lib/time';
 
 export function PatientAppointmentsPage() {
-  const q = useQuery({ queryKey: ['appointments', 'mine'], queryFn: api.myAppointments });
+  const q = useQuery({ queryKey: ['appointments', 'mine'], queryFn: () => api.myAppointments() });
   return (
     <>
       <PageHeader title="Appointments" subtitle="All times are Lagos time." />
