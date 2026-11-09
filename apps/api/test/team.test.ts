@@ -279,10 +279,10 @@ describe('clinic team management (owner self-service)', () => {
     expect(byEmail.body.data[0]).not.toHaveProperty('phone');
 
     const patient = await makeUser('patient');
-    expect((await api.get('/api/v1/staff-accounts?q=a').set(patient.auth)).status).toBe(403);
+    expect((await api.get('/api/v1/staff-accounts?q=user').set(patient.auth)).status).toBe(403);
     // A clinician may not enumerate accounts either — only owners invite.
     const clinicianAuth = (await makeStaff(await makeProvider(), 'clinician')).auth;
-    expect((await api.get('/api/v1/staff-accounts?q=a').set(clinicianAuth)).status).toBe(403);
+    expect((await api.get('/api/v1/staff-accounts?q=user').set(clinicianAuth)).status).toBe(403);
     expect((await api.get('/api/v1/staff-accounts')).status).toBe(401);
   });
 });

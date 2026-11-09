@@ -39,7 +39,7 @@ after that the owner manages their own team (below).
 | `GET /providers/:id/team` | any member of that clinic, operator, admin | — | members with `provider_role`, account `status`. Works while the facility is still pending; `404` if you are not a member |
 | `POST /providers/:id/team` | `owner` of a **verified** clinic, operator, admin | `user_id, provider_role: clinician \| scheduler \| receptionist` | adds or re-roles a staff account and activates it if `pending` (they get `account_approved` + `team_invite`). `409 PROVIDER_NOT_VERIFIED` while the facility awaits verification; `409 NOT_PROVIDER_STAFF`, `409 ACCOUNT_SUSPENDED`, `409 SELF_CHANGE` |
 | `DELETE /providers/:id/team/:userId` | `owner` of a verified clinic, operator, admin | — | removes a member. `409 OWNER_CHANGE_FORBIDDEN` for an owner, `409 SELF_CHANGE` for yourself, `404` if they are not on the team |
-| `GET /staff-accounts` | `owner` of a verified clinic, operator, admin | `q?` (name or email), paging | provider-staff accounts the clinic may invite — id, name, email, status only (no phone, no password hash) |
+| `GET /staff-accounts` | `owner` of a verified clinic, operator, admin | `q` (2–190 chars, matched against name or email), paging | provider-staff accounts the clinic may invite — id, name, email, status only (no phone, no password hash) |
 
 ## Consents
 
