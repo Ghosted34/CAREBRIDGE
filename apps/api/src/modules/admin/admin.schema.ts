@@ -11,6 +11,13 @@ export const ProvidersQuery = Pagination.extend({
   verification_status: z.enum(['pending', 'verified', 'rejected', 'suspended']).optional(),
 });
 
+export const AuditLogsQuery = Pagination.extend({
+  action: z.string().optional(),
+  entity_type: z.string().optional(),
+  entity_id: z.coerce.number().int().positive().optional(),
+  actor_user_id: z.coerce.number().int().positive().optional(),
+});
+
 export const SetUserStatusBody = z.object({ status: z.enum(['active', 'suspended']) });
 
 export const CreateProviderBody = z.object({

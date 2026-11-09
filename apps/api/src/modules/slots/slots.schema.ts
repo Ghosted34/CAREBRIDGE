@@ -1,0 +1,33 @@
+import { z } from 'zod';
+
+export const DayScheduleSchema = z.object({
+  day_of_week: z.number().int().min(0).max(6),
+  open_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/),
+  close_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/),
+  slot_duration_minutes: z.number().int().min(10).max(180).default(30),
+  is_active: z.boolean().default(true),
+});
+
+export const SetSchedulesBody = z.object({
+  schedules: z.array(DayScheduleSchema).min(1),
+});
+export type SetSchedulesBody = z.infer<typeof SetSchedulesBody>;
+
+export const GenerateSlotsBody = z.object({
+  start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});
+export type GenerateSlotsBody = z.infer<typeof GenerateSlotsBody>;
+
+export const CreateSlotBody = z.object({
+  start_time: z.string().datetime(),
+  end_time: z.string().datetime(),
+});
+export type CreateSlotBody = z.infer<typeof CreateSlotBody>;
+
+export const ListSlotsQuery = z.object({
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
+  status: z.enum(['available', 'held', 'booked', 'cancelled']).optional(),
+});
+export type ListSlotsQuery = z.infer<typeof ListSlotsQuery>;

@@ -78,25 +78,54 @@ copies are sent by the worker (`npm run worker`). Which events notify whom: [arc
 | `POST /offers/:id/decline` | the requesting patient | — | |
 | `POST /offers/:id/withdraw` | offering provider (owner/clinician/scheduler), operator, admin | — | only while `offered` |
 
-## Appointments
+## Appointments & Capacity Slots
 
 | Method & path | Who | Body | Notes |
 |---|---|---|---|
-| `POST /appointments` | patient (own request), staff of the assigned provider, operator, admin | `care_request_id, starts_at, ends_at, appointment_type` | Request must have an assigned provider (`409 REQUEST_NOT_BOOKABLE`). Future start, ≤ 8 h, times truncated to whole seconds. Overlap with the provider's booked/confirmed appointments → `409 SLOT_UNAVAILABLE` (serialised per provider) |
-| `GET /appointments/mine` | any | paging | patient: own · staff: their providers' · ops: all. Includes `patient_name`, `provider` |
+| `POST /appointments` | patient (own request), staff of the assigned provider, operator, admin | `care_request_id, starts_at, ends_at, appointment_type, slot_id?` | Overlap check or atomic slot claim. Serialised per provider |
+| `GET /appointments/mine` | any | paging | patient: own · staff: their providers' · ops: all |
 | `POST /appointments/:id/confirm` | provider staff, operator, admin | — | `booked → confirmed` |
 | `POST /appointments/:id/check-in` | 〃 | — | `confirmed → checked_in` |
 | `POST /appointments/:id/complete` | 〃 | — | `checked_in → completed` |
 | `POST /appointments/:id/no-show` | 〃 | — | `confirmed → no_show` |
 | `POST /appointments/:id/cancel` | own patient, provider staff, operator, admin | — | from `booked`/`confirmed` |
+| `GET /providers/:id/schedules` | public | — | weekly opening hours & slot duration |
+| `PUT /providers/:id/schedules` | provider owner/scheduler, admin | `schedules: [{ day_of_week, open_time, close_time, slot_duration_minutes, is_active }]` | updates clinic capacity |
+| `GET /providers/:id/slots` | public | `from?, to?, status?` | bookable appointment slots |
+| `POST /providers/:id/slots` | provider staff, admin | `start_time, end_time` | manual slot creation |
+| `POST /providers/:id/slots/generate` | provider staff, admin | `start_date, end_date` | generates slots across date range from schedule |
+| `POST /slots/:id/cancel` | provider staff, admin | — | cancels open slot |
 
-`appointment_type`: `assessment | specialist | diagnostic | procedure | follow_up`.
+## Referrals, Estimates, Documents, Payments & Matching
+
+| Method & path | Who | Body / query | Notes |
+|---|---|---|---|
+| `GET /requests/:id/matches` | patient, staff, operator, admin | — | intelligent provider matching score (0-100) and breakdown |
+| `POST /requests/:id/referrals` | clinician/owner of assigned provider, operator, admin | `receiving_provider_id, referred_specialty, clinical_summary` | general dentist → specialist handoff |
+| `GET /requests/:id/referrals` | patient, related providers, operator, admin | — | referrals for request |
+| `GET /referrals/mine` | staff, operator, admin | `type?: incoming \| outgoing \| all, status?` | incoming/outgoing referrals |
+| `POST /referrals/:id/accept` | receiving clinician/owner, admin | — | `sent → accepted` |
+| `POST /referrals/:id/decline` | receiving clinician/owner, admin | — | `sent → declined` |
+| `POST /referrals/:id/complete` | receiving clinician/owner, admin | — | `accepted → completed` |
+| `POST /requests/:id/estimates` | assigned provider staff, operator, admin | `amount, currency?, inclusions?, exclusions?, valid_until?` | transparent cost estimate |
+| `GET /requests/:id/estimates` | patient, assigned provider, operator, admin | — | estimates for request |
+| `POST /estimates/:id/accept` | patient | — | `issued → accepted` |
+| `POST /estimates/:id/reject` | patient | — | `issued → rejected` |
+| `POST /requests/:id/documents/upload-url` | patient, assigned provider, operator, admin | `document_type, file_name, mime_type, file_size_bytes` | returns pre-signed S3 or mock upload URL |
+| `POST /requests/:id/documents` | patient, assigned provider, operator, admin | `storage_key, document_type, file_name, mime_type, file_size_bytes` | confirms upload & saves record |
+| `GET /requests/:id/documents` | patient, assigned provider, operator, admin | — | lists documents with pre-signed download URLs |
+| `POST /requests/:id/payments/initialize` | patient, operator, admin | `amount, currency?, callback_url?` | Paystack / mock gateway checkout initialization |
+| `GET /requests/:id/payments` | patient, assigned provider, operator, admin | — | payment history for request |
+| `POST /payments/webhook` | public | Paystack webhook payload + signature | processes charge.success event |
+| `POST /payments/:id/simulate-success` | patient, operator, admin | — | test/demo instant payment completion |
 
 ## Admin & operations
 
 | Method & path | Who | Body / query | Notes |
 |---|---|---|---|
 | `GET /admin/metrics` | admin, operator | — | counts incl. open requests, pending providers/staff |
+| `GET /admin/stuck-requests` | admin, operator | — | SLA monitor: lists requests breaching 2h matching or 24h booking SLA |
+| `GET /admin/audit-logs` | admin, operator | `action?, entity_type?, entity_id?, actor_user_id?, limit?, offset?` | append-only audit trail viewer |
 | `GET /admin/users` | admin | `status?`, `role?`, paging | |
 | `POST /admin/users/:id/status` | admin | `status: active \| suspended` | can't change your own |
 | `GET /admin/providers` | admin, operator | `verification_status?`, paging | all providers, pending first, with `member_count` |

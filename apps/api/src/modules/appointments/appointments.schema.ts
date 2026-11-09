@@ -6,4 +6,5 @@ export const BookAppointmentBody = z.object({
   starts_at: z.iso.datetime({ offset: true }),
   ends_at: z.iso.datetime({ offset: true }),
   appointment_type: z.enum(['assessment', 'specialist', 'diagnostic', 'procedure', 'follow_up']),
+  slot_id: z.number().int().positive().optional(),
 });

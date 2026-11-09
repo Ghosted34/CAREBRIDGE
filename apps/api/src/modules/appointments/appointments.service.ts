@@ -6,9 +6,10 @@ import { AppError } from '../../lib/errors.js';
 import type { Ctx } from '../../lib/http.js';
 import { assertTransition } from '../../lib/stateMachine.js';
 import type { Pagination } from '../../lib/validate.js';
-import * as requestsRepo from '../requests/requests.repo.js';
-import type { BookAppointmentBody } from './appointments.schema.js';
 import * as notifications from '../notifications/notifications.service.js';
+import * as requestsRepo from '../requests/requests.repo.js';
+import * as slotsRepo from '../slots/slots.repo.js';
+import type { BookAppointmentBody } from './appointments.schema.js';
 import * as repo from './appointments.repo.js';
 
 const BOOKABLE_REQUEST_STATUSES = [
@@ -53,6 +54,12 @@ export async function book(c: Ctx, input: z.infer<typeof BookAppointmentBody>) {
     if ((await repo.findOverlapping(tx, providerId, start, end)).length) {
       throw AppError.conflict('SLOT_UNAVAILABLE', 'Provider slot is no longer available');
     }
+    if (input.slot_id) {
+      const slot = await slotsRepo.findSlotById(tx, input.slot_id, { forUpdate: true });
+      if (!slot || slot.provider_id !== providerId || slot.status !== 'available') {
+        throw AppError.conflict('SLOT_UNAVAILABLE', 'Selected slot is no longer available');
+      }
+    }
     const id = await repo.insert(tx, {
       care_request_id: request.id,
       patient_user_id: request.patient_user_id,
@@ -62,6 +69,9 @@ export async function book(c: Ctx, input: z.infer<typeof BookAppointmentBody>) {
       ends_at: end,
       created_by_user_id: c.user.id,
     });
+    if (input.slot_id) {
+      await slotsRepo.updateSlotStatus(tx, input.slot_id, 'booked', id);
+    }
     await audit(tx, {
       actorUserId: c.user.id,
       action: 'APPOINTMENT_BOOKED',

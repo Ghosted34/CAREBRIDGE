@@ -1,0 +1,129 @@
+openapi: 3.1.0
+info:
+  title: CareBridge API
+  version: 0.2.0
+  description: >-
+    Coordinated access to verified healthcare capacity in Lagos (dental pilot).
+    Manages care requests, clinic offers, appointment slots, clinical referrals,
+    cost estimates, clinical documents, and Paystack payments.
+servers:
+  - url: /api/v1
+    description: API v1
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: API is operational
+  /auth/register:
+    post:
+      summary: Register account (patient or provider staff)
+      responses:
+        '201':
+          description: Account created
+  /auth/login:
+    post:
+      summary: Authenticate and receive JWT
+      responses:
+        '200':
+          description: Sign in successful
+  /requests:
+    post:
+      summary: Submit a care request
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Care request created
+        '422':
+          description: Emergency redirect guidance
+  /requests/{id}/matches:
+    get:
+      summary: Intelligent matching score breakdown
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Ranked matching providers
+  /providers/{id}/slots:
+    get:
+      summary: List available capacity slots
+      responses:
+        '200':
+          description: Slots list
+    post:
+      summary: Create slot
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Slot created
+  /requests/{id}/referrals:
+    post:
+      summary: Create specialist referral
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Referral sent
+    get:
+      summary: List referrals for request
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Referral records
+  /requests/{id}/estimates:
+    post:
+      summary: Issue cost estimate
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Estimate issued
+    get:
+      summary: List estimates for request
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Estimate records
+  /requests/{id}/documents/upload-url:
+    post:
+      summary: Generate pre-signed upload URL for clinical photo/X-ray
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Pre-signed upload parameters
+  /requests/{id}/payments/initialize:
+    post:
+      summary: Initialize payment via Paystack or mock gateway
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Checkout authorization URL
+  /admin/stuck-requests:
+    get:
+      summary: Operator SLA monitoring dashboard
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Breached and warning requests
+  /admin/audit-logs:
+    get:
+      summary: Audit log inspection
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Audit log stream
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

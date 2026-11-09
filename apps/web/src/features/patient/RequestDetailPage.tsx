@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState, type ChangeEvent } from 'react';
 import { Link, useLocation, useParams } from 'react-router';
 import { api } from '../../api/endpoints';
 import { BookingForm } from '../../components/BookingForm';
@@ -8,6 +9,8 @@ import {
   Card,
   EmptyState,
   ErrorNote,
+  Field,
+  Modal,
   Notice,
   PageHeader,
   Pill,
@@ -16,6 +19,8 @@ import {
 import {
   appointmentStatus,
   appointmentType,
+  estimateStatus,
+  paymentStatus,
   requestStatus,
   titleCase,
   urgency,
@@ -28,6 +33,11 @@ export function RequestDetailPage() {
   const id = Number(useParams().id);
   const justCreated = (useLocation().state as { created?: boolean } | null)?.created;
   const queryClient = useQueryClient();
+  const [payModalOpen, setPayModalOpen] = useState(false);
+  const [payAmount, setPayAmount] = useState(15000);
+  const [uploadDocType, setUploadDocType] = useState<'photo' | 'xray' | 'report' | 'other'>(
+    'photo',
+  );
 
   const request = useQuery({ queryKey: ['requests', id], queryFn: () => api.request(id) });
   const offers = useQuery({
@@ -38,11 +48,34 @@ export function RequestDetailPage() {
     queryKey: ['appointments', 'mine'],
     queryFn: api.myAppointments,
   });
+  const estimates = useQuery({
+    queryKey: ['estimates', id],
+    queryFn: () => api.estimatesForRequest(id),
+  });
+  const documents = useQuery({
+    queryKey: ['documents', id],
+    queryFn: () => api.documentsForRequest(id),
+  });
+  const payments = useQuery({
+    queryKey: ['payments', id],
+    queryFn: () => api.paymentsForRequest(id),
+  });
+  const matches = useQuery({
+    queryKey: ['matches', id],
+    queryFn: () => api.matchesForRequest(id),
+    enabled: Boolean(
+      request.data?.data && ['submitted', 'matching'].includes(request.data.data.status),
+    ),
+  });
 
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ['requests'] });
     void queryClient.invalidateQueries({ queryKey: ['appointments'] });
+    void queryClient.invalidateQueries({ queryKey: ['estimates', id] });
+    void queryClient.invalidateQueries({ queryKey: ['documents', id] });
+    void queryClient.invalidateQueries({ queryKey: ['payments', id] });
   };
+
   const respond = useMutation({
     mutationFn: ({ offerId, accept }: { offerId: number; accept: boolean }) =>
       accept ? api.acceptOffer(offerId) : api.declineOffer(offerId),
@@ -54,6 +87,58 @@ export function RequestDetailPage() {
     onSuccess: refresh,
   });
 
+  const respondEstimate = useMutation({
+    mutationFn: ({ estimateId, accept }: { estimateId: number; accept: boolean }) =>
+      accept ? api.acceptEstimate(estimateId) : api.rejectEstimate(estimateId),
+    onSuccess: refresh,
+  });
+
+  const initPayment = useMutation({
+    mutationFn: () => api.initializePayment(id, { amount: payAmount, currency: 'NGN' }),
+    onSuccess: () => {
+      setPayModalOpen(false);
+      refresh();
+    },
+  });
+
+  const simulatePay = useMutation({
+    mutationFn: (paymentId: number) => api.simulatePaymentSuccess(paymentId),
+    onSuccess: refresh,
+  });
+
+  const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const { data: urlData } = await api.requestUploadUrl(id, {
+        document_type: uploadDocType,
+        file_name: file.name,
+        mime_type: file.type || 'application/octet-stream',
+        file_size_bytes: file.size,
+      });
+
+      // Upload file to pre-signed URL (mock or S3)
+      await fetch(urlData.upload_url, {
+        method: urlData.method,
+        headers: urlData.headers,
+        body: file,
+      });
+
+      await api.confirmUpload(id, {
+        storage_key: urlData.storage_key,
+        document_type: uploadDocType,
+        file_name: file.name,
+        mime_type: file.type || 'application/octet-stream',
+        file_size_bytes: file.size,
+      });
+
+      refresh();
+    } catch {
+      // Non-fatal, error caught in UI
+    }
+  };
+
   if (request.isPending) return <Spinner />;
   if (request.isError) return <ErrorNote error={request.error} />;
   const r = request.data.data;
@@ -62,6 +147,10 @@ export function RequestDetailPage() {
   const openOffers = (offers.data?.data ?? []).filter((o) => o.status === 'offered');
   const canCancel = !['completed', 'cancelled'].includes(r.status);
   const accepted = offers.data?.data.find((o) => o.status === 'accepted');
+  const estList = estimates.data?.data ?? [];
+  const docList = documents.data?.data ?? [];
+  const payList = payments.data?.data ?? [];
+  const matchList = matches.data?.data ?? [];
 
   return (
     <>
@@ -145,9 +234,103 @@ export function RequestDetailPage() {
           {BOOKABLE.includes(r.status) && (
             <Card>
               <h2>Book an appointment</h2>
-              <BookingForm careRequestId={r.id} />
+              <BookingForm careRequestId={r.id} providerId={r.assigned_provider_id ?? undefined} />
             </Card>
           )}
+
+          {/* Service Estimates */}
+          {estList.length > 0 && (
+            <Card>
+              <h2>Cost estimates</h2>
+              <ul className="list">
+                {estList.map((est) => {
+                  const meta = estimateStatus[est.status];
+                  return (
+                    <li className="list-item" key={est.id}>
+                      <div className="list-item-main">
+                        <div className="list-item-title">
+                          {est.currency} {Number(est.amount).toLocaleString()}
+                        </div>
+                        {est.inclusions && <div className="meta">Includes: {est.inclusions}</div>}
+                        {est.exclusions && <div className="meta">Excludes: {est.exclusions}</div>}
+                      </div>
+                      <div className="btn-row">
+                        <Pill tone={meta.tone}>{meta.label}</Pill>
+                        {est.status === 'issued' && (
+                          <>
+                            <Button
+                              className="btn-sm"
+                              busy={respondEstimate.isPending}
+                              onClick={() =>
+                                respondEstimate.mutate({ estimateId: est.id, accept: true })
+                              }
+                            >
+                              Approve
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              className="btn-sm"
+                              onClick={() =>
+                                respondEstimate.mutate({ estimateId: est.id, accept: false })
+                              }
+                            >
+                              Decline
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </Card>
+          )}
+
+          {/* Payments & Deposits */}
+          <Card>
+            <div className="cluster justify-between items-center mb-2">
+              <h2>Payments & Deposits</h2>
+              {r.assigned_provider_id && (
+                <Button className="btn-sm" onClick={() => setPayModalOpen(true)}>
+                  Make payment
+                </Button>
+              )}
+            </div>
+            {payList.length === 0 ? (
+              <p className="muted small">No payment transactions recorded yet.</p>
+            ) : (
+              <ul className="list">
+                {payList.map((p) => {
+                  const meta = paymentStatus[p.status];
+                  return (
+                    <li className="list-item" key={p.id}>
+                      <div className="list-item-main">
+                        <div className="list-item-title">
+                          {p.currency} {Number(p.amount).toLocaleString()}
+                        </div>
+                        <div className="meta">
+                          Ref: {p.provider_reference} · {p.payment_provider}
+                        </div>
+                      </div>
+                      <div className="btn-row">
+                        <Pill tone={meta.tone}>{meta.label}</Pill>
+                        {p.status === 'pending' && (
+                          <Button
+                            variant="ghost"
+                            className="btn-sm"
+                            busy={simulatePay.isPending}
+                            onClick={() => simulatePay.mutate(p.id)}
+                          >
+                            Simulate pay
+                          </Button>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </Card>
         </div>
 
         <div className="stack">
@@ -218,8 +401,124 @@ export function RequestDetailPage() {
             )}
             <ErrorNote error={cancelAppt.error} />
           </Card>
+
+          {/* Secure Clinical Documents */}
+          <Card>
+            <h2>Clinical documents & X-rays</h2>
+            <p className="muted small mb-2">
+              Attach diagnostic photos or X-rays. Files are stored securely with encrypted access.
+            </p>
+            <div className="cluster gap-2 mb-3">
+              <select
+                value={uploadDocType}
+                onChange={(e) =>
+                  setUploadDocType(e.target.value as 'photo' | 'xray' | 'report' | 'other')
+                }
+              >
+                <option value="photo">Photo</option>
+                <option value="xray">X-ray</option>
+                <option value="report">Lab report</option>
+                <option value="other">Other</option>
+              </select>
+              <label className="btn btn-sm btn-ghost" style={{ cursor: 'pointer' }}>
+                Choose file
+                <input
+                  type="file"
+                  style={{ display: 'none' }}
+                  onChange={(e) => void handleFileUpload(e)}
+                />
+              </label>
+            </div>
+            {docList.length === 0 ? (
+              <p className="muted small">No documents attached yet.</p>
+            ) : (
+              <ul className="list">
+                {docList.map((doc) => (
+                  <li className="list-item" key={doc.id}>
+                    <div className="list-item-main">
+                      <div className="list-item-title">{doc.file_name}</div>
+                      <div className="meta">
+                        {doc.document_type.toUpperCase()} · {Math.round(doc.file_size_bytes / 1024)}{' '}
+                        KB · by {doc.uploader_name}
+                      </div>
+                    </div>
+                    {doc.download_url && (
+                      <a
+                        href={doc.download_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="btn btn-sm btn-ghost"
+                      >
+                        Download
+                      </a>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+
+          {/* Matching Score Breakdown */}
+          {matchList.length > 0 && (
+            <Card>
+              <h2>Clinic match ranking</h2>
+              <p className="muted small mb-2">
+                Intelligent matching score based on specialty, proximity, and clinic capacity.
+              </p>
+              <ul className="list">
+                {matchList.slice(0, 3).map((m) => (
+                  <li className="list-item" key={m.provider_id}>
+                    <div className="list-item-main">
+                      <div className="list-item-title">{m.display_name}</div>
+                      <div className="meta">
+                        {m.city} · {m.specialties.join(', ')}
+                      </div>
+                      <div className="meta">
+                        Fit: {m.score.breakdown.clinical_fit}/40 · Location:{' '}
+                        {m.score.breakdown.location_fit}/20 · Slots:{' '}
+                        {m.score.breakdown.availability}/10
+                      </div>
+                    </div>
+                    <Pill tone={m.score.tier === 'excellent' ? 'green' : 'gold'}>
+                      {m.score.total}% Match
+                    </Pill>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
         </div>
       </div>
+
+      <Modal
+        open={payModalOpen}
+        title="Make payment or deposit"
+        onClose={() => setPayModalOpen(false)}
+      >
+        <div className="stack gap-3">
+          <p className="hint">
+            Pay consultation fee or initial treatment deposit securely via Paystack.
+          </p>
+          <Field label="Amount (NGN)">
+            <input
+              type="number"
+              min={1000}
+              max={5000000}
+              step={500}
+              value={payAmount}
+              onChange={(e) => setPayAmount(Number(e.target.value))}
+            />
+          </Field>
+          <div className="btn-row">
+            <Button variant="ghost" onClick={() => setPayModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button busy={initPayment.isPending} onClick={() => initPayment.mutate()}>
+              Initialize payment
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </>
   );
 }

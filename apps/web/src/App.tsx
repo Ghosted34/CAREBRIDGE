@@ -3,8 +3,10 @@ import { RequireRole } from './auth/RequireRole';
 import { Layout } from './components/Layout';
 import { EmptyState } from './components/ui';
 import { NotificationsPage } from './features/account/NotificationsPage';
+import { AuditLogsPage } from './features/admin/AuditLogsPage';
 import { OverviewPage } from './features/admin/OverviewPage';
 import { ProvidersAdminPage } from './features/admin/ProvidersAdminPage';
+import { SlaDashboardPage } from './features/admin/SlaDashboardPage';
 import { UsersPage } from './features/admin/UsersPage';
 import { LoginPage } from './features/auth/LoginPage';
 import { RegisterPage } from './features/auth/RegisterPage';
@@ -14,10 +16,12 @@ import { PatientHomePage } from './features/patient/PatientHomePage';
 import { PrivacyPage } from './features/patient/PrivacyPage';
 import { PoliciesPage } from './features/public/PoliciesPage';
 import { RequestDetailPage } from './features/patient/RequestDetailPage';
+import { CapacityPage } from './features/provider/CapacityPage';
 import { JourneysPage } from './features/provider/JourneysPage';
 import { ProviderAppointmentsPage } from './features/provider/ProviderAppointmentsPage';
 import { ProviderOffersPage } from './features/provider/ProviderOffersPage';
 import { QueuePage } from './features/provider/QueuePage';
+import { ReferralsPage } from './features/provider/ReferralsPage';
 import { HomePage } from './features/public/HomePage';
 import { ProvidersPage } from './features/public/ProvidersPage';
 
@@ -62,11 +66,15 @@ export function App() {
         <Route path="provider" element={provider(<QueuePage />)} />
         <Route path="provider/patients" element={provider(<JourneysPage />)} />
         <Route path="provider/appointments" element={provider(<ProviderAppointmentsPage />)} />
+        <Route path="provider/capacity" element={provider(<CapacityPage />)} />
+        <Route path="provider/referrals" element={provider(<ReferralsPage />)} />
         <Route path="provider/offers" element={provider(<ProviderOffersPage />)} />
 
         <Route path="ops" element={ops(<OverviewPage />)} />
         <Route path="ops/queue" element={ops(<QueuePage />)} />
         <Route path="ops/journeys" element={ops(<JourneysPage />)} />
+        <Route path="ops/sla" element={ops(<SlaDashboardPage />)} />
+        <Route path="ops/audit-logs" element={ops(<AuditLogsPage />)} />
         <Route path="ops/providers" element={ops(<ProvidersAdminPage />)} />
         <Route path="ops/users" element={adminOnly(<UsersPage />)} />
 

@@ -45,8 +45,9 @@ export function addMinutes(iso: string, minutes: number): string {
 }
 
 /** Lagos wall-clock 'YYYY-MM-DDTHH:mm' for an instant (for datetime-local defaults/min). */
-export function toLagosLocal(date: Date): string {
-  const lagos = new Date(date.getTime() + 60 * 60_000); // shift UTC → UTC+1, then read as UTC
+export function toLagosLocal(date: Date | string = new Date()): string {
+  const d = typeof date === 'string' ? new Date(date) : date;
+  const lagos = new Date(d.getTime() + 60 * 60_000); // shift UTC → UTC+1, then read as UTC
   return lagos.toISOString().slice(0, 16);
 }
 

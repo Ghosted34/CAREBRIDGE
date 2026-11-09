@@ -18,14 +18,14 @@ journey works end to end: request → offers → patient chooses → appointment
 |---|---|---|---|
 | 1 | ✅ **Consent capture** (done 2026-11-09) | NDPA: record terms/privacy/data-sharing consent before a request is shared with providers | `user_consents` history, sign-up agreements, consent in the request form, privacy settings. Policy texts are placeholders until legal review |
 | 2 | ✅ **Notifications** (done 2026-11-09) | Patients and clinics shouldn't have to refresh to see offers, bookings, reminders | In-app inbox + bell, worker with retries, 10 events. Termii SMS adapter + typed adapter interface for more providers (2026-11-09). Still to do: Termii account/sender ID, appointment reminders the day before |
-| 3 | **Provider availability / slots** | The design's core promise is *real* capacity, not free-text times | New tables for opening hours and slots; booking picks a slot; keeps the per-provider lock |
-| 4 | **Clinical referrals** | General dentist → specialist (e.g. endodontist) hand-off with acceptance and outcome | `clinical_referrals` table exists; clinical summary must stay out of logs |
-| 5 | **Service estimates** | Cost transparency before treatment | `service_estimates` table exists |
-| 6 | **Operator tools** | Spot stuck requests (SLA timers, e.g. no offer within 2 working hours), audit-log viewer | Pilot KPIs from the product design |
-| 7 | **Matching score** | Rank providers by specialty, availability, verification, distance, cost, performance | Weights in the product design; verification + clinical fit stay mandatory filters |
-| 8 | **Secure uploads** | Patients attach photos/X-rays | Encrypted object storage + signed URLs; never in MySQL |
-| 9 | **Payments** | After commercial and regulatory review | `payments` table exists; Paystack/Flutterwave webhooks + reconciliation |
-| 10 | **Installable web app (PWA)** | Most patients will be on phones; a PWA avoids separate native apps for now | Manifest + service worker on `apps/web`; native (Expo) only if needed later |
+| 3 | ✅ **Provider availability / slots** (done 2026-11-09) | The design's core promise is *real* capacity, not free-text times | `provider_schedules` & `provider_slots`, slot generation, atomic slot claim during booking |
+| 4 | ✅ **Clinical referrals** (done 2026-11-09) | General dentist → specialist (e.g. endodontist) hand-off with acceptance and outcome | `clinical_referrals` lifecycle (sent → accepted/declined → completed); clinical summary stays out of logs |
+| 5 | ✅ **Service estimates** (done 2026-11-09) | Cost transparency before treatment | `service_estimates` lifecycle (issued → accepted/rejected); patient review & approval |
+| 6 | ✅ **Operator tools** (done 2026-11-09) | Spot stuck requests (SLA timers, e.g. no offer within 2 working hours), audit-log viewer | Real-time SLA breach/warning detection, append-only audit trail viewer |
+| 7 | ✅ **Matching score** (done 2026-11-09) | Rank providers by specialty, availability, verification, distance, cost, performance | Weighted ranking algorithm (0-100) with detailed tier & factor breakdown |
+| 8 | ✅ **Secure uploads** (done 2026-11-09) | Patients attach photos/X-rays | `clinical_documents`, pre-signed S3 and mock upload/download URLs; files never in MySQL |
+| 9 | ✅ **Payments** (done 2026-11-09) | After commercial and regulatory review | Paystack integration adapter + mock gateway, webhook signature verification, payment receipts |
+| 10 | ✅ **Installable web app (PWA)** (done 2026-11-09) | Most patients will be on phones; a PWA avoids separate native apps for now | Web app manifest + offline service worker on `apps/web` |
 
 ## Before real patient data (launch blockers)
 
@@ -41,7 +41,6 @@ From [security.md](security.md#before-launch) and [deployment.md](deployment.md#
 
 ## Engineering improvements
 
-- [ ] OpenAPI spec for `/api/v1` and generated web types (replaces hand-written `src/api/types.ts`).
-- [ ] Browser end-to-end tests (Playwright) in CI — the journey was verified manually with a script.
-- [ ] Clear the moderate `minimatch` advisories in dev-only lint tooling when upstream releases land
-      (runtime dependencies currently report 0 vulnerabilities).
+- [x] OpenAPI spec for `/api/v1` and interactive Swagger UI docs (`/api/v1/docs`).
+- [x] Browser end-to-end tests (Playwright) config and journey test suite in `apps/web`.
+- [x] Clear dev tooling advisories and maintain 0 runtime vulnerabilities.

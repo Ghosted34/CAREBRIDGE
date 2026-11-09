@@ -13,6 +13,7 @@ export default defineConfig({
     proxy: { '/api': API_TARGET, '/health': API_TARGET },
   },
   test: {
+    include: ['src/**/*.test.{ts,tsx}'],
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],

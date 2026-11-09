@@ -229,3 +229,150 @@ export interface AppNotification {
   read_at: string | null;
   created_at: string;
 }
+
+export type SlotStatus = 'available' | 'held' | 'booked' | 'cancelled';
+
+export interface ProviderSchedule {
+  id: number;
+  provider_id: number;
+  day_of_week: number;
+  open_time: string;
+  close_time: string;
+  slot_duration_minutes: number;
+  is_active: number | boolean;
+}
+
+export interface ProviderSlot {
+  id: number;
+  provider_id: number;
+  start_time: string;
+  end_time: string;
+  status: SlotStatus;
+  appointment_id: number | null;
+  created_at: string;
+}
+
+export type ReferralStatus = 'draft' | 'sent' | 'accepted' | 'declined' | 'completed' | 'cancelled';
+
+export interface ClinicalReferral {
+  id: number;
+  care_request_id: number;
+  referring_provider_id: number;
+  referring_provider: string;
+  receiving_provider_id: number;
+  receiving_provider: string;
+  referred_specialty: string;
+  clinical_summary: string;
+  status: ReferralStatus;
+  created_at: string;
+}
+
+export type EstimateStatus = 'draft' | 'issued' | 'accepted' | 'rejected' | 'expired';
+
+export interface ServiceEstimate {
+  id: number;
+  care_request_id: number;
+  provider_id: number;
+  provider: string;
+  currency: string;
+  amount: number | string;
+  inclusions: string | null;
+  exclusions: string | null;
+  valid_until: string | null;
+  status: EstimateStatus;
+  created_at: string;
+}
+
+export type DocumentType = 'photo' | 'xray' | 'report' | 'referral' | 'other';
+
+export interface ClinicalDocument {
+  id: number;
+  care_request_id: number;
+  uploader_user_id: number;
+  uploader_name: string;
+  document_type: DocumentType;
+  file_name: string;
+  mime_type: string;
+  file_size_bytes: number;
+  storage_key: string;
+  download_url?: string;
+  created_at: string;
+}
+
+export type PaymentStatus = 'initiated' | 'pending' | 'successful' | 'failed' | 'refunded';
+
+export interface PaymentRecord {
+  id: number;
+  care_request_id: number;
+  payer_user_id: number;
+  payer_name: string;
+  payee_provider_id: number | null;
+  payee_provider: string | null;
+  amount: number | string;
+  currency: string;
+  payment_provider: string | null;
+  provider_reference: string | null;
+  status: PaymentStatus;
+  created_at: string;
+}
+
+export interface PaymentInitResult {
+  payment_id: number;
+  reference: string;
+  authorization_url: string;
+  access_code: string;
+}
+
+export interface MatchScore {
+  total: number;
+  tier: 'excellent' | 'good' | 'fair';
+  breakdown: {
+    clinical_fit: number;
+    verification: number;
+    location_fit: number;
+    availability: number;
+    performance: number;
+  };
+}
+
+export interface MatchingProvider {
+  provider_id: number;
+  display_name: string;
+  city: string;
+  address: string;
+  specialties: string[];
+  score: MatchScore;
+}
+
+export interface StuckRequest {
+  id: number;
+  patient_user_id: number;
+  patient_name: string;
+  patient_email: string;
+  category: string;
+  urgency: Urgency;
+  status: RequestStatus;
+  city: string;
+  assigned_provider_id: number | null;
+  assigned_provider: string | null;
+  created_at: string;
+  updated_at: string;
+  age_minutes: number;
+  offers_count: number;
+  appointments_count: number;
+  sla_category:
+    'unmatched_breach' | 'unmatched_warning' | 'unbooked_delay' | 'clinical_stalled' | 'standard';
+}
+
+export interface AuditLog {
+  id: number;
+  actor_user_id: number | null;
+  actor_name: string | null;
+  actor_email: string | null;
+  action: string;
+  entity_type: string;
+  entity_id: number;
+  ip_address: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+}

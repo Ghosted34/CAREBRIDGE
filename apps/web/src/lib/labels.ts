@@ -1,9 +1,13 @@
 import type {
   AppointmentStatus,
   AppointmentType,
+  EstimateStatus,
   OfferStatus,
+  PaymentStatus,
   ProviderRole,
+  ReferralStatus,
   RequestStatus,
+  SlotStatus,
   Urgency,
   VerificationStatus,
 } from '../api/types';
@@ -76,6 +80,49 @@ export const providerRole: Record<ProviderRole, string> = {
   clinician: 'Clinician',
   scheduler: 'Scheduler',
   receptionist: 'Receptionist',
+};
+
+export const referralStatus: Record<ReferralStatus, { label: string; tone: Tone }> = {
+  draft: { label: 'Draft', tone: 'grey' },
+  sent: { label: 'Sent', tone: 'gold' },
+  accepted: { label: 'Accepted', tone: 'green' },
+  declined: { label: 'Declined', tone: 'red' },
+  completed: { label: 'Completed', tone: 'teal' },
+  cancelled: { label: 'Cancelled', tone: 'grey' },
+};
+
+export const estimateStatus: Record<EstimateStatus, { label: string; tone: Tone }> = {
+  draft: { label: 'Draft', tone: 'grey' },
+  issued: { label: 'Pending Review', tone: 'gold' },
+  accepted: { label: 'Approved', tone: 'green' },
+  rejected: { label: 'Declined', tone: 'red' },
+  expired: { label: 'Expired', tone: 'grey' },
+};
+
+export const paymentStatus: Record<PaymentStatus, { label: string; tone: Tone }> = {
+  initiated: { label: 'Initiated', tone: 'grey' },
+  pending: { label: 'Pending', tone: 'gold' },
+  successful: { label: 'Paid', tone: 'green' },
+  failed: { label: 'Failed', tone: 'red' },
+  refunded: { label: 'Refunded', tone: 'grey' },
+};
+
+export const slotStatus: Record<SlotStatus, { label: string; tone: Tone }> = {
+  available: { label: 'Available', tone: 'green' },
+  held: { label: 'Reserved', tone: 'gold' },
+  booked: { label: 'Booked', tone: 'teal' },
+  cancelled: { label: 'Cancelled', tone: 'grey' },
+};
+
+export const slaCategory: Record<
+  'unmatched_breach' | 'unmatched_warning' | 'unbooked_delay' | 'clinical_stalled' | 'standard',
+  { label: string; tone: Tone }
+> = {
+  unmatched_breach: { label: 'SLA Breached (>2h)', tone: 'red' },
+  unmatched_warning: { label: 'SLA Warning (>1h)', tone: 'gold' },
+  unbooked_delay: { label: 'Unbooked (>24h)', tone: 'red' },
+  clinical_stalled: { label: 'Stalled (>7d)', tone: 'gold' },
+  standard: { label: 'On Track', tone: 'green' },
 };
 
 export const titleCase = (s: string) =>

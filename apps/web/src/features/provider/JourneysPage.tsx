@@ -41,14 +41,58 @@ export function JourneysPage() {
   const isOps = user?.role !== 'provider_staff';
   const [status, setStatus] = useState<RequestStatus | ''>('');
   const [booking, setBooking] = useState<AssignedRequest | null>(null);
+  const [estimateFor, setEstimateFor] = useState<AssignedRequest | null>(null);
+  const [referralFor, setReferralFor] = useState<AssignedRequest | null>(null);
+
+  // Form states
+  const [estAmount, setEstAmount] = useState(25000);
+  const [estInclusions, setEstInclusions] = useState('Consultation, digital X-rays, treatment');
+  const [estExclusions, setEstExclusions] = useState('Prescription medication');
+
+  const [refSpecialty, setRefSpecialty] = useState('Endodontics');
+  const [refSummary, setRefSummary] = useState('');
+  const [refProviderId, setRefProviderId] = useState<number>(2);
+
   const queryClient = useQueryClient();
   const q = useQuery({
     queryKey: ['requests', 'assigned', status],
     queryFn: () => api.assigned({ status: status || undefined }),
   });
+  const providersQuery = useQuery({
+    queryKey: ['providers'],
+    queryFn: () => api.providers(),
+  });
+
   const progress = useMutation({
     mutationFn: ({ id, step }: { id: number; step: JourneyStep }) => api.progressRequest(id, step),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['requests'] }),
+  });
+
+  const issueEstimate = useMutation({
+    mutationFn: () =>
+      api.createEstimate(estimateFor!.id, {
+        amount: estAmount,
+        currency: 'NGN',
+        inclusions: estInclusions,
+        exclusions: estExclusions,
+      }),
+    onSuccess: () => {
+      setEstimateFor(null);
+      void queryClient.invalidateQueries({ queryKey: ['requests'] });
+    },
+  });
+
+  const createReferral = useMutation({
+    mutationFn: () =>
+      api.createReferral(referralFor!.id, {
+        receiving_provider_id: refProviderId,
+        referred_specialty: refSpecialty,
+        clinical_summary: refSummary,
+      }),
+    onSuccess: () => {
+      setReferralFor(null);
+      void queryClient.invalidateQueries({ queryKey: ['referrals'] });
+    },
   });
 
   return (
@@ -137,9 +181,17 @@ export function JourneysPage() {
                   </Button>
                 ))}
                 {BOOKABLE.includes(r.status) && (
-                  <Button variant="secondary" onClick={() => setBooking(r)}>
-                    Book appointment
-                  </Button>
+                  <>
+                    <Button variant="secondary" onClick={() => setBooking(r)}>
+                      Book appointment
+                    </Button>
+                    <Button variant="ghost" onClick={() => setEstimateFor(r)}>
+                      Issue estimate
+                    </Button>
+                    <Button variant="ghost" onClick={() => setReferralFor(r)}>
+                      Refer patient
+                    </Button>
+                  </>
                 )}
               </div>
             </Card>
@@ -152,6 +204,107 @@ export function JourneysPage() {
         onClose={() => setBooking(null)}
       >
         {booking && <BookingForm careRequestId={booking.id} onBooked={() => setBooking(null)} />}
+      </Modal>
+
+      <Modal
+        open={!!estimateFor}
+        title={`Issue Cost Estimate for Request #${estimateFor?.id ?? ''}`}
+        onClose={() => setEstimateFor(null)}
+      >
+        <div className="stack gap-3">
+          <p className="hint">
+            Provide transparent pricing before clinical treatment begins. The patient will review
+            and approve.
+          </p>
+          <Field label="Amount (NGN)">
+            <input
+              type="number"
+              min={1000}
+              max={10000000}
+              step={1000}
+              value={estAmount}
+              onChange={(e) => setEstAmount(Number(e.target.value))}
+            />
+          </Field>
+          <Field label="Inclusions">
+            <textarea
+              rows={2}
+              value={estInclusions}
+              onChange={(e) => setEstInclusions(e.target.value)}
+            />
+          </Field>
+          <Field label="Exclusions">
+            <textarea
+              rows={2}
+              value={estExclusions}
+              onChange={(e) => setEstExclusions(e.target.value)}
+            />
+          </Field>
+          <ErrorNote error={issueEstimate.error} />
+          <div className="btn-row">
+            <Button variant="ghost" onClick={() => setEstimateFor(null)}>
+              Cancel
+            </Button>
+            <Button busy={issueEstimate.isPending} onClick={() => issueEstimate.mutate()}>
+              Issue estimate
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={!!referralFor}
+        title={`Refer Patient #${referralFor?.id ?? ''} to Specialist`}
+        onClose={() => setReferralFor(null)}
+      >
+        <div className="stack gap-3">
+          <p className="hint">
+            Initiate clinician-to-clinician handoff. Clinical summaries stay strictly out of server
+            logs.
+          </p>
+          <Field label="Receiving Clinic / Specialist">
+            <select
+              value={refProviderId}
+              onChange={(e) => setRefProviderId(Number(e.target.value))}
+            >
+              {(providersQuery.data?.data ?? []).map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.display_name} ({p.city})
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Referred Specialty">
+            <input
+              type="text"
+              required
+              value={refSpecialty}
+              onChange={(e) => setRefSpecialty(e.target.value)}
+            />
+          </Field>
+          <Field label="Clinical Summary & Handover Notes">
+            <textarea
+              rows={3}
+              required
+              placeholder="Detailed clinical findings, diagnostic notes, reason for referral..."
+              value={refSummary}
+              onChange={(e) => setRefSummary(e.target.value)}
+            />
+          </Field>
+          <ErrorNote error={createReferral.error} />
+          <div className="btn-row">
+            <Button variant="ghost" onClick={() => setReferralFor(null)}>
+              Cancel
+            </Button>
+            <Button
+              busy={createReferral.isPending}
+              disabled={!refSummary.trim()}
+              onClick={() => createReferral.mutate()}
+            >
+              Send referral
+            </Button>
+          </div>
+        </div>
       </Modal>
     </>
   );
