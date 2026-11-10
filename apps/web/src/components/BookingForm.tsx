@@ -87,7 +87,19 @@ export function BookingForm({
       if (!selectedProvider || !selectedCentre || !selectedSlot) {
         throw new Error('Provider, centre and slot required');
       }
-      return api.book({
+      if (!selectedCentre.id) {
+        throw new Error('Centre is missing an ID');
+      }
+      const body: {
+        care_request_id: number;
+        provider_id: number;
+        centre_id: number;
+        starts_at: string;
+        ends_at: string;
+        appointment_type: 'assessment';
+        appointment_mode: 'physical';
+        caregiver_id?: number;
+      } = {
         care_request_id: careRequestId,
         provider_id: selectedProvider.provider_id,
         centre_id: selectedCentre.id,
@@ -95,8 +107,9 @@ export function BookingForm({
         ends_at: selectedSlot.end_time,
         appointment_type: 'assessment',
         appointment_mode: 'physical',
-        caregiver_id: selectedCaregiver ?? undefined,
-      });
+      };
+      if (selectedCaregiver) body.caregiver_id = selectedCaregiver;
+      return api.book(body);
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['appointments'] });

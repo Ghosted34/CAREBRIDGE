@@ -12,7 +12,7 @@ export const BookAppointmentBody = z.object({
   // Provider/facility the patient is booking with (patient picks directly, no offer round).
   provider_id: z.number().int().positive(),
   // Which operating centre of the provider the visit happens at.
-  centre_id: z.number().int().positive().optional(),
+  centre_id: z.number().int().positive().nullish().default(null),
   // ISO-8601 with an explicit offset or Z, e.g. 2026-11-10T09:00:00+01:00
   starts_at: z.iso.datetime({ offset: true }),
   ends_at: z.iso.datetime({ offset: true }),
