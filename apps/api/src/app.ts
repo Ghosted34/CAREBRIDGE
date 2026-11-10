@@ -3,6 +3,7 @@ import express, { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import path from 'path';
+import { fileURLToPath } from 'node:url';
 import { env } from './config/env.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { adminRouter } from './modules/admin/admin.routes.js';
@@ -64,7 +65,12 @@ export function createApp() {
   // Serve the built web app (single deployment: web + api together).
   // Static assets are served from dist/public; all other non-API routes fall
   // through to index.html so React Router client-side routing works.
-  const publicDir = path.join(__dirname, '..', 'dist', 'public');
+  const publicDir = path.join(
+    path.dirname(fileURLToPath(import.meta.url)),
+    '..',
+    'dist',
+    'public',
+  );
   app.use(express.static(publicDir));
   app.get('*', (_req, res) => {
     res.sendFile(path.join(publicDir, 'index.html'));
