@@ -67,7 +67,7 @@ export function createApp() {
   // through to index.html so React Router client-side routing works.
   const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist', 'public');
   app.use(express.static(publicDir));
-  app.get('*', (_req, res) => {
+  app.get('/:path*', (_req, res) => {
     res.sendFile(path.join(publicDir, 'index.html'));
   });
 
