@@ -127,12 +127,18 @@ export async function makeRequest(patient: TestUser, over: Record<string, unknow
  * Book an appointment on an accepted request and take it to `completed` — the point after which
  * clinical governance allows estimates, referrals and treatment planning (see VISIT_REQUIRED).
  */
-export async function completeVisit(patient: TestUser, staff: TestUser, requestId: number) {
+export async function completeVisit(
+  patient: TestUser,
+  staff: TestUser,
+  requestId: number,
+  providerId?: number,
+) {
   const booked = await api
     .post('/api/v1/appointments')
     .set(patient.auth)
     .send({
       care_request_id: requestId,
+      ...(providerId !== undefined ? { provider_id: providerId } : {}),
       starts_at: inHours(24),
       ends_at: inHours(25),
       appointment_type: 'assessment',
@@ -161,6 +167,7 @@ export async function acceptedRequest() {
     .set(patient.auth)
     .send({
       care_request_id: requestId,
+      provider_id: providerId,
       starts_at: inHours(2),
       ends_at: inHours(3),
       appointment_type: 'assessment',

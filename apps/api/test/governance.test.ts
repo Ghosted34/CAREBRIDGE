@@ -28,7 +28,7 @@ const referralBody = (receiving_provider_id: number) => ({
  */
 describe('post-visit governance', () => {
   it('refuses a cost estimate before the patient has been seen, and allows it after', async () => {
-    const { patient, staff, requestId } = await acceptedRequest();
+    const { patient, staff, providerId, requestId } = await acceptedRequest();
     await api.post(`/api/v1/requests/${requestId}/start-assessment`).set(staff.auth);
 
     const tooEarly = await api
@@ -40,7 +40,7 @@ describe('post-visit governance', () => {
     const [rows] = await pool.query<Row[]>('SELECT COUNT(*) AS n FROM service_estimates');
     expect(rows[0]!.n).toBe(0);
 
-    await completeVisit(patient, staff, requestId);
+    await completeVisit(patient, staff, requestId, providerId);
     const issued = await api
       .post(`/api/v1/requests/${requestId}/estimates`)
       .set(staff.auth)
@@ -54,7 +54,7 @@ describe('post-visit governance', () => {
   });
 
   it('refuses a specialist referral before the patient has been seen, and allows it after', async () => {
-    const { patient, staff, requestId } = await acceptedRequest();
+    const { patient, staff, providerId, requestId } = await acceptedRequest();
     const specialistId = await makeProvider({ specialties: ['endodontics'] });
     await api.post(`/api/v1/requests/${requestId}/start-assessment`).set(staff.auth);
 
@@ -67,7 +67,7 @@ describe('post-visit governance', () => {
     const [rows] = await pool.query<Row[]>('SELECT COUNT(*) AS n FROM clinical_referrals');
     expect(rows[0]!.n).toBe(0);
 
-    await completeVisit(patient, staff, requestId);
+    await completeVisit(patient, staff, requestId, providerId);
     const sent = await api
       .post(`/api/v1/requests/${requestId}/referrals`)
       .set(staff.auth)
@@ -95,8 +95,8 @@ describe('post-visit governance', () => {
   });
 
   it('still refuses callers with no right to act for the clinic (permission wins)', async () => {
-    const { patient, staff, requestId } = await acceptedRequest();
-    await completeVisit(patient, staff, requestId);
+    const { patient, staff, providerId, requestId } = await acceptedRequest();
+    await completeVisit(patient, staff, requestId, providerId);
     const outsider = await makeStaff(await makeProvider({ specialties: ['endodontics'] }), 'owner');
     const estimate = await api
       .post(`/api/v1/requests/${requestId}/estimates`)

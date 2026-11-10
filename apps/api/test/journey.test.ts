@@ -30,8 +30,8 @@ describe('assigned requests', () => {
   });
 
   it('counts completed visits so the UI can gate estimates and referrals', async () => {
-    const { patient, staff, requestId } = await acceptedRequest();
-    await completeVisit(patient, staff, requestId);
+    const { patient, staff, providerId, requestId } = await acceptedRequest();
+    await completeVisit(patient, staff, requestId, providerId);
     const r = await api.get('/api/v1/requests/assigned').set(staff.auth);
     expect(r.body.data[0]).toMatchObject({ id: requestId, assessments_completed: 1 });
   });
@@ -89,7 +89,7 @@ describe('journey progress', () => {
     expect(tooEarly.status).toBe(409);
     expect(tooEarly.body.error.code).toBe('VISIT_REQUIRED');
 
-    await completeVisit(patient, staff, requestId);
+    await completeVisit(patient, staff, requestId, providerId);
     for (const [step, status] of [
       ['plan-treatment', 'treatment_planned'],
       ['start-treatment', 'in_progress'],

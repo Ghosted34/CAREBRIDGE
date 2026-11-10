@@ -11,7 +11,6 @@ import { MAX_ATTEMPTS, processBatch } from '../src/modules/notifications/worker.
 import {
   acceptedRequest,
   api,
-  inHours,
   makeProvider,
   makeRequest,
   makeStaff,
@@ -70,18 +69,9 @@ describe('events create notifications', () => {
   });
 
   it('booking, confirming and cancelling notify the other side', async () => {
-    const { patient, staff, requestId } = await acceptedRequest();
-    const b = await api
-      .post('/api/v1/appointments')
-      .set(patient.auth)
-      .send({
-        care_request_id: requestId,
-        starts_at: inHours(2),
-        ends_at: inHours(3),
-        appointment_type: 'assessment',
-      });
-    await api.post(`/api/v1/appointments/${b.body.data.id}/confirm`).set(staff.auth);
-    await api.post(`/api/v1/appointments/${b.body.data.id}/cancel`).set(staff.auth);
+    const { patient, staff, apptId } = await acceptedRequest();
+    await api.post(`/api/v1/appointments/${apptId}/confirm`).set(staff.auth);
+    await api.post(`/api/v1/appointments/${apptId}/cancel`).set(staff.auth);
     expect(await kinds(staff.id)).toContain('appointment_booked_provider:email:queued');
     const p = await kinds(patient.id);
     expect(p).toContain('appointment_confirmed:sms:queued');

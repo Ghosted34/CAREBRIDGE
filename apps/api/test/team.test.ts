@@ -30,6 +30,8 @@ const clinicRegistration = () => {
       display_name: `Ikeja Dental ${seq}`,
       provider_type: 'clinic',
       registration_number: `MDCN-${seq}`,
+      cac_number: `RC-${String(seq).padStart(6, '0')}`,
+      tax_id: `TIN-${String(seq).padStart(8, '0')}-001`,
       city: 'Lagos',
       address: '12 Awolowo Road, Ikeja, Lagos',
       specialties: ['dentistry'],
