@@ -38,8 +38,8 @@ export const CreateSlotBody = z.object({
 export type CreateSlotBody = z.infer<typeof CreateSlotBody>;
 
 export const ListSlotsQuery = z.object({
-  from: z.string().datetime().optional(),
-  to: z.string().datetime().optional(),
+  from: z.iso.datetime({ offset: true }).optional(),
+  to: z.iso.datetime({ offset: true }).optional(),
   status: z.enum(['available', 'held', 'booked', 'cancelled']).optional(),
   centre_id: z.coerce.number().int().positive().optional(),
 });

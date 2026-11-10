@@ -24,7 +24,6 @@ import {
   paymentStatus,
   requestStatus,
   titleCase,
-  urgency,
 } from '../../lib/labels';
 import { formatDateTime, formatTimeRange } from '../../lib/time';
 
@@ -325,10 +324,6 @@ export function RequestDetailPage() {
           <Card>
             <h2>Your request</h2>
             <dl className="kv">
-              <dt>Urgency</dt>
-              <dd>
-                <Pill tone={urgency[r.urgency].tone}>{urgency[r.urgency].label}</Pill>
-              </dd>
               <dt>Area</dt>
               <dd>{r.preferred_city}</dd>
               <dt>Sent</dt>
