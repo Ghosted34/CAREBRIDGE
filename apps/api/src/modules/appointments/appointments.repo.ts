@@ -2,8 +2,14 @@ import type { Db, Result, Row } from '../../db/pool.js';
 import type { Pagination } from '../../lib/validate.js';
 
 const FIELDS = `a.id, a.care_request_id, a.patient_user_id, u.full_name AS patient_name, a.provider_id,
-  p.display_name AS provider, a.appointment_type, a.starts_at, a.ends_at, a.status, a.created_at`;
-const FROM = `appointments a JOIN providers p ON p.id = a.provider_id JOIN users u ON u.id = a.patient_user_id`;
+  p.display_name AS provider, a.centre_id, c.name AS centre, a.caregiver_user_id,
+  g.full_name AS caregiver, a.appointment_type, a.appointment_mode, a.starts_at, a.ends_at,
+  a.status, a.created_at`;
+const FROM = `appointments a
+  JOIN providers p ON p.id = a.provider_id
+  JOIN users u ON u.id = a.patient_user_id
+  LEFT JOIN provider_centres c ON c.id = a.centre_id
+  LEFT JOIN users g ON g.id = a.caregiver_user_id`;
 
 export async function insert(
   db: Db,
@@ -11,21 +17,27 @@ export async function insert(
     care_request_id: number;
     patient_user_id: number;
     provider_id: number;
+    centre_id: number;
+    caregiver_user_id: number | null;
     appointment_type: string;
+    appointment_mode: string;
     starts_at: Date;
     ends_at: Date;
     created_by_user_id: number;
   },
 ) {
   const [r] = await db.execute<Result>(
-    `INSERT INTO appointments(care_request_id, patient_user_id, provider_id, appointment_type,
-       starts_at, ends_at, status, created_by_user_id)
-     VALUES (?, ?, ?, ?, ?, ?, 'booked', ?)`,
+    `INSERT INTO appointments(care_request_id, patient_user_id, provider_id, centre_id,
+       caregiver_user_id, appointment_type, appointment_mode, starts_at, ends_at, status, created_by_user_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'booked', ?)`,
     [
       a.care_request_id,
       a.patient_user_id,
       a.provider_id,
+      a.centre_id,
+      a.caregiver_user_id,
       a.appointment_type,
+      a.appointment_mode,
       a.starts_at,
       a.ends_at,
       a.created_by_user_id,

@@ -4,6 +4,7 @@
  */
 export type Role = 'patient' | 'provider_staff' | 'operator' | 'admin';
 export type ProviderRole = 'owner' | 'clinician' | 'scheduler' | 'receptionist';
+export type AppointmentMode = 'physical' | 'video_call' | 'voice_call';
 export type Urgency = 'routine' | 'soon' | 'urgent';
 export type RequestStatus =
   | 'submitted'
@@ -67,6 +68,8 @@ export interface Provider {
   specialties: string[];
   services: string[] | null;
   accepting_referrals: boolean;
+  centres?: ProviderCentre[];
+  next_available_at?: string | null;
 }
 
 export interface CareRequestSummary {
@@ -153,11 +156,45 @@ export interface Appointment {
   patient_name: string;
   provider_id: number;
   provider: string;
+  centre_id: number;
+  centre: string | null;
+  caregiver_user_id: number | null;
+  caregiver: string | null;
   appointment_type: AppointmentType;
+  appointment_mode: AppointmentMode;
   starts_at: string;
   ends_at: string;
   status: AppointmentStatus;
   created_at: string;
+}
+
+export interface ProviderCentre {
+  id: number;
+  provider_id: number;
+  name: string;
+  address: string;
+  city: string;
+  phone: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CentreCaregiver {
+  user_id: number;
+  full_name: string;
+  is_active: boolean;
+}
+
+export interface AppointmentNote {
+  id: number;
+  appointment_id: number;
+  note_type: 'follow_up' | 'referral' | 'prescription' | 'consultation_closed';
+  notes: string;
+  created_by_user_id: number;
+  created_by_name: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Metrics {

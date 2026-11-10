@@ -107,6 +107,21 @@ export async function makeStaff(providerId: number, providerRole: ProviderRole =
   return user;
 }
 
+/** Every booking now targets an operating centre; tests use one per provider. */
+export async function ensureCentre(providerId: number): Promise<number> {
+  const [existing] = await pool.execute<Row[]>(
+    'SELECT id FROM provider_centres WHERE provider_id = ? LIMIT 1',
+    [providerId],
+  );
+  if (existing[0]) return existing[0].id as number;
+  const [r] = await pool.execute<Result>(
+    `INSERT INTO provider_centres(provider_id, name, address, city, is_active)
+     VALUES (?, 'Test Centre', 'Test address, Lagos', TRUE)`,
+    [providerId],
+  );
+  return r.insertId as number;
+}
+
 export const requestBody = (over: Record<string, unknown> = {}) => ({
   specialty: 'dentistry',
   service_type: 'root canal assessment',
@@ -129,6 +144,12 @@ export async function makeRequest(patient: TestUser, over: Record<string, unknow
  * clinical governance allows estimates, referrals and treatment planning (see VISIT_REQUIRED).
  */
 export async function completeVisit(patient: TestUser, staff: TestUser, requestId: number) {
+  const [rows] = await pool.execute<Row[]>(
+    'SELECT assigned_provider_id FROM care_requests WHERE id = ?',
+    [requestId],
+  );
+  const providerId = Number((rows[0] as Row).assigned_provider_id);
+  const centreId = await ensureCentre(providerId);
   const booked = await api
     .post('/api/v1/appointments')
     .set(patient.auth)
@@ -137,6 +158,7 @@ export async function completeVisit(patient: TestUser, staff: TestUser, requestI
       starts_at: inHours(24),
       ends_at: inHours(25),
       appointment_type: 'assessment',
+      centre_id: centreId,
     });
   if (booked.status !== 201)
     throw new Error(
@@ -156,13 +178,14 @@ export async function acceptedRequest() {
   const patient = await makeUser('patient');
   const providerId = await makeProvider();
   const staff = await makeStaff(providerId, 'owner');
+  const centreId = await ensureCentre(providerId);
   const requestId = await makeRequest(patient);
   const offer = await api
     .post(`/api/v1/requests/${requestId}/offers`)
     .set(staff.auth)
     .send({ provider_id: providerId });
   await api.post(`/api/v1/offers/${offer.body.data.id}/accept`).set(patient.auth);
-  return { patient, providerId, staff, requestId, offerId: offer.body.data.id as number };
+  return { patient, providerId, staff, centreId, requestId, offerId: offer.body.data.id as number };
 }
 
 export async function auditActions(entityType: string, entityId: number) {

@@ -177,6 +177,14 @@ export const TEMPLATES = {
     body: (p) => `The patient for request #${p.request_id} has approved your cost estimate.`,
     link: () => '/provider/patients',
   },
+  appointment_notes_added: {
+    channels: ['in_app', 'sms'],
+    title: () => 'Notes added to your appointment',
+    body: (p) => `${p.provider} added notes to your appointment on ${when(p.starts_at)}.`,
+    sms: (p) =>
+      `CareBridge: your provider added notes to your appointment on ${when(p.starts_at)}. Open the app.`,
+    link: (p) => `/patient/requests/${p.request_id}`,
+  },
   estimate_rejected: {
     channels: ['in_app'],
     title: () => 'Patient declined estimate',

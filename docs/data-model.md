@@ -32,12 +32,15 @@ erDiagram
 | `provider_users` | Staff ↔ provider membership | PK (`provider_id`,`user_id`) · `provider_role` owner/clinician/scheduler/receptionist | ✅ |
 | `care_requests` | A patient's request — start of every journey | `status` (see below) · `urgency` · `assigned_provider_id` (set when an offer is accepted, or when a patient directs the request at a clinic) · `description` is **clinical text** | ✅ |
 | `provider_offers` | A provider offering to take a request | `uq_provider_offers_request_provider` (one per provider per request) · `status` | ✅ |
-| `appointments` | Scheduled visits | `chk_appointments_time_order` (end > start) · `idx_appointments_provider_time` for overlap checks | ✅ |
-| `provider_schedules` | Weekly clinic opening hours | `uq_provider_schedules_day`, `day_of_week` (0-6), `slot_duration_minutes` | ✅ |
-| `provider_slots` | Bookable appointment slots | `start_time`, `end_time`, `status` available/held/booked/cancelled | ✅ |
+| `appointments` | Scheduled visits | `centre_id`, `caregiver_user_id`, `appointment_mode` (physical/video_call/voice_call); `chk_appointments_time_order` (end > start) · `idx_appointments_provider_time` for overlap checks | ✅ |
+| `provider_centres` | Operating centres (branches) of a provider | `name`, `address`, `city`, `phone`, `is_active`; `uq_provider_centres_name` | ✅ |
+| `provider_schedules` | Weekly opening hours per centre | `centre_id`, `day_of_week` (0-6), `open_time`, `close_time`, `slot_duration_minutes`; `uq_provider_schedules_centre_day` | ✅ |
+| `provider_slots` | Bookable appointment slots per centre | `centre_id`, `start_time`, `end_time`, `status` available/held/booked/cancelled; `uq_provider_slots_centre_time` | ✅ |
+| `provider_caregivers` | Caregivers (clinicians) linked to a centre | `centre_id`, `user_id`, `is_active`; `uq_provider_caregivers_centre_user` | ✅ |
 | `clinical_referrals` | Clinician-to-clinician referrals | `clinical_summary` is clinical text | ✅ |
 | `service_estimates` | Estimated charges | `amount DECIMAL(14,2)`, `chk_service_estimates_amount` ≥ 0 | ✅ |
 | `clinical_documents` | Photos, X-rays, lab reports in encrypted storage | `care_request_id`, `uploader_user_id`, `storage_key`, `document_type` | ✅ |
+| `appointment_notes` | Consultation notes added after a visit | `appointment_id`, `note_type`, `notes`, `created_by_user_id`; append-only | ✅ |
 | `payments` | Payment records | `uq_payments_provider_reference` | ✅ |
 | `user_consents` | Append-only consent history (renamed from `patient_consents`: staff accept terms too) | `consent_type` terms/privacy/data_sharing/marketing · `version` · `granted` · `source` registration/settings/request_form · `ip_address` · `revoked_at` | ✅ |
 | `notifications` | Outbound message queue + in-app inbox | `channel`, `template_key`, `payload` (IDs/names/times only — never clinical text), `status` queued/sent/failed/skipped, `attempts`, `next_attempt_at`, `last_error`, `read_at` | ✅ |
@@ -60,6 +63,14 @@ Every foreign key and index is explicitly named (`fk_…`, `idx_…`, `uq_…`, 
 - **Post-visit governance** is derived, never stored: `GET /requests/assigned` counts `appointments` for the
   request with `status IN ('checked_in','completed')` as `assessments_completed`. Estimates, referrals and
   treatment planning are refused (`409 VISIT_REQUIRED`) while that count is 0.
+- **Operating centres** let a provider run several locations (`provider_centres`), each with its own opening
+  hours (`provider_schedules`, scoped to `centre_id`) and bookable slots (`provider_slots`, scoped to
+  `centre_id`). Every appointment records the `centre_id` it happens at and an `appointment_mode`
+  (`physical`, `video_call`, `voice_call`), plus an optional `caregiver_user_id` linking to an active
+  caregiver of that centre (`provider_caregivers`).
+- **Consultation notes** (`appointment_notes`) are append-only notes a provider adds to an appointment once
+  the patient has been checked in or completed: follow-up plan, referral for further diagnosis, prescriptions,
+  or closing the consultation. The note text is audited by ID only and never placed in a notification payload.
 
 ## Status machines
 

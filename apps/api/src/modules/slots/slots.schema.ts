@@ -9,17 +9,23 @@ export const DayScheduleSchema = z.object({
 });
 
 export const SetSchedulesBody = z.object({
+  /** Which operating centre these opening hours belong to. */
+  centre_id: z.number().int().positive(),
   schedules: z.array(DayScheduleSchema).min(1),
 });
 export type SetSchedulesBody = z.infer<typeof SetSchedulesBody>;
 
 export const GenerateSlotsBody = z.object({
+  /** Which operating centre the slots belong to. */
+  centre_id: z.number().int().positive(),
   start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
 export type GenerateSlotsBody = z.infer<typeof GenerateSlotsBody>;
 
 export const CreateSlotBody = z.object({
+  /** Which operating centre the slot belongs to. */
+  centre_id: z.number().int().positive(),
   start_time: z.string().datetime(),
   end_time: z.string().datetime(),
 });

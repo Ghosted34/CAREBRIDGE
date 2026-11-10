@@ -1,4 +1,5 @@
 import type {
+  AppointmentMode,
   AppointmentStatus,
   AppointmentType,
   EstimateStatus,
@@ -73,6 +74,22 @@ export const appointmentType: Record<AppointmentType, string> = {
   diagnostic: 'Diagnostic',
   procedure: 'Procedure',
   follow_up: 'Follow-up',
+};
+
+export const appointmentMode: Record<AppointmentMode, { label: string; tone: Tone }> = {
+  physical: { label: 'In person', tone: 'teal' },
+  video_call: { label: 'Video call', tone: 'gold' },
+  voice_call: { label: 'Voice call', tone: 'gold' },
+};
+
+export const noteType: Record<
+  'follow_up' | 'referral' | 'prescription' | 'consultation_closed',
+  { label: string; tone: Tone }
+> = {
+  follow_up: { label: 'Follow-up plan', tone: 'teal' },
+  referral: { label: 'Referral', tone: 'gold' },
+  prescription: { label: 'Prescription', tone: 'gold' },
+  consultation_closed: { label: 'Consultation closed', tone: 'green' },
 };
 
 export const providerRole: Record<ProviderRole, string> = {

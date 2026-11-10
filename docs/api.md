@@ -111,7 +111,7 @@ Before that they return `409 VISIT_REQUIRED` and write nothing. Booking an appoi
 
 | Method & path | Who | Body | Notes |
 |---|---|---|---|
-| `POST /appointments` | patient (own request), staff of the assigned provider, operator, admin | `care_request_id, starts_at, ends_at, appointment_type, slot_id?` | Overlap check or atomic slot claim. Serialised per provider |
+| `POST /appointments` | patient (own request), staff of the assigned provider, operator, admin | `care_request_id, starts_at, ends_at, appointment_type, centre_id, caregiver_user_id?, appointment_mode?, slot_id?` | Overlap check or atomic slot claim. `centre_id` picks the operating centre; `caregiver_user_id` books with a specific caregiver of that centre; `appointment_mode` is `physical` (default), `video_call` or `voice_call`. Serialised per provider |
 | `GET /appointments/mine` | any | `provider_id?`, paging | patient: own (always) · staff: their providers', or one clinic via `provider_id` · ops: all |
 | `POST /appointments/:id/confirm` | provider staff, operator, admin | — | `booked → confirmed` |
 | `POST /appointments/:id/check-in` | 〃 | — | `confirmed → checked_in` |
@@ -124,6 +124,30 @@ Before that they return `409 VISIT_REQUIRED` and write nothing. Booking an appoi
 | `POST /providers/:id/slots` | provider staff, admin | `start_time, end_time` | manual slot creation |
 | `POST /providers/:id/slots/generate` | provider staff, admin | `start_date, end_date` | generates slots across date range from schedule |
 | `POST /slots/:id/cancel` | provider staff, admin | — | cancels open slot |
+
+## Operating centres
+
+| Method & path | Who | Body / query | Notes |
+|---|---|---|---|
+| `GET /providers/:id/centres` | public | — | Operating centres of a verified, active provider |
+| `GET /providers/:id/centres/:centreId` | public | — | One operating centre; 404 unless the provider is verified/active |
+| `GET /providers/:id/centres/:centreId/schedules` | public | — | Weekly opening hours of a centre |
+| `PUT /providers/:id/centres/:centreId/schedules` | provider owner/scheduler, operator, admin | `schedules: [{ day_of_week, open_time, close_time, slot_duration_minutes, is_active }]` | Replaces a centre's opening hours |
+| `GET /providers/:id/centres/:centreId/slots` | public | `from?, to?, status?` | Bookable slots of a centre |
+| `POST /providers/:id/centres/:centreId/slots` | provider staff, admin | `start_time, end_time` | Manual slot creation at a centre |
+| `POST /providers/:id/centres/:centreId/slots/generate` | provider staff, admin | `start_date, end_date` | Generates slots across a date range from the centre's schedule |
+| `POST /providers/:id/centres` | provider owner/scheduler, operator, admin | `name, address, city, phone?, is_active?` | Adds an operating centre to a verified/active provider |
+| `PUT /providers/:id/centres/:centreId` | provider owner/scheduler, operator, admin | `name?, address?, city?, phone?, is_active?` | Updates an operating centre |
+| `GET /providers/:id/centres/:centreId/caregivers` | public | — | Caregivers linked to a centre |
+| `POST /providers/:id/centres/:centreId/caregivers` | provider owner/scheduler, operator, admin | `user_id, is_active?` | Links an active provider_staff member as a caregiver of the centre |
+
+## Appointment notes
+
+| Method & path | Who | Body | Notes |
+|---|---|---|---|
+| `GET /appointments/:id/notes` | patient (own), staff of the provider, operator, admin | — | Consultation notes on an appointment |
+| `POST /appointments/:id/notes` | staff of the provider, operator, admin | `note_type: follow_up \| referral \| prescription \| consultation_closed, notes` | Only after the patient has been checked in or completed; the note text is audited by ID only, never sent in notifications |
+
 
 ## Referrals, Estimates, Documents, Payments & Matching
 

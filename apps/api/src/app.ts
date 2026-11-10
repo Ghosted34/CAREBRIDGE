@@ -15,6 +15,7 @@ import { notificationsRouter } from './modules/notifications/notifications.route
 import { offersRouter } from './modules/offers/offers.routes.js';
 import { paymentsRouter } from './modules/payments/payments.routes.js';
 import { providersRouter } from './modules/providers/providers.routes.js';
+import { appointmentNotesRouter } from './modules/appointment_notes/appointment_notes.routes.js';
 import { referralsRouter } from './modules/referrals/referrals.routes.js';
 import { requestsRouter } from './modules/requests/requests.routes.js';
 import { slotsRouter } from './modules/slots/slots.routes.js';
@@ -49,6 +50,7 @@ export function createApp() {
     requestsRouter,
     offersRouter,
     appointmentsRouter,
+    appointmentNotesRouter,
     slotsRouter,
     referralsRouter,
     estimatesRouter,

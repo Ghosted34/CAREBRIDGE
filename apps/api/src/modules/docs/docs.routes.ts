@@ -139,13 +139,87 @@ export const openapiSpec = {
     },
     '/providers/{id}/slots': {
       get: {
-        summary: 'List bookable appointment slots for a provider',
+        summary: 'List bookable appointment slots for a provider (all centres)',
         responses: { '200': { description: 'List of slots' } },
       },
       post: {
-        summary: 'Create a bookable slot',
+        summary: 'Create a bookable slot at an operating centre',
         security: [{ bearerAuth: [] }],
         responses: { '201': { description: 'Slot created' } },
+      },
+    },
+    '/providers/{id}/centres': {
+      get: {
+        summary: "List a provider's operating centres",
+        responses: { '200': { description: 'List of operating centres' } },
+      },
+      post: {
+        summary: 'Add an operating centre (owner/scheduler)',
+        security: [{ bearerAuth: [] }],
+        responses: { '201': { description: 'Centre created' } },
+      },
+    },
+    '/providers/{id}/centres/{centreId}': {
+      get: {
+        summary: 'Get one operating centre',
+        responses: { '200': { description: 'Operating centre' } },
+      },
+      put: {
+        summary: 'Update an operating centre (owner/scheduler)',
+        security: [{ bearerAuth: [] }],
+        responses: { '200': { description: 'Centre updated' } },
+      },
+    },
+    '/providers/{id}/centres/{centreId}/schedules': {
+      get: {
+        summary: "List a centre's weekly opening hours",
+        responses: { '200': { description: 'Centre schedules' } },
+      },
+      put: {
+        summary: 'Replace a centre’s opening hours (owner/scheduler)',
+        security: [{ bearerAuth: [] }],
+        responses: { '200': { description: 'Updated schedules' } },
+      },
+    },
+    '/providers/{id}/centres/{centreId}/slots': {
+      get: {
+        summary: 'List bookable appointment slots for an operating centre',
+        responses: { '200': { description: 'List of slots' } },
+      },
+      post: {
+        summary: 'Create a bookable slot at a centre',
+        security: [{ bearerAuth: [] }],
+        responses: { '201': { description: 'Slot created' } },
+      },
+    },
+    '/providers/{id}/centres/{centreId}/slots/generate': {
+      post: {
+        summary: 'Generate slots for a centre from its schedule',
+        security: [{ bearerAuth: [] }],
+        responses: { '201': { description: 'Slots generated' } },
+      },
+    },
+    '/providers/{id}/centres/{centreId}/caregivers': {
+      get: {
+        summary: "List a centre's caregivers",
+        responses: { '200': { description: 'Centre caregivers' } },
+      },
+      post: {
+        summary: 'Link a caregiver to a centre (owner/scheduler)',
+        security: [{ bearerAuth: [] }],
+        responses: { '201': { description: 'Caregiver linked' } },
+      },
+    },
+    '/appointments/{id}/notes': {
+      get: {
+        summary: 'List consultation notes on an appointment',
+        security: [{ bearerAuth: [] }],
+        responses: { '200': { description: 'Appointment notes' } },
+      },
+      post: {
+        summary: 'Add a consultation note to an appointment (after check-in)',
+        security: [{ bearerAuth: [] }],
+        responses: { '201': { description: 'Note added' } },
       },
     },
     '/requests/{id}/referrals': {

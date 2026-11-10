@@ -58,6 +58,50 @@ async function upsertProvider(p: {
   return r.insertId;
 }
 
+async function upsertCentre(providerId: number, name: string, address: string, city: string) {
+  const [r] = await pool.execute<Result>(
+    `INSERT INTO provider_centres(provider_id, name, address, city, is_active)
+     VALUES (?, ?, ?, ?, TRUE)`,
+    [providerId, name, address, city],
+  );
+  return r.insertId as number;
+}
+
+/** Weekday schedules 09:00–17:00 with 30-minute slots, Lagos wall-clock time. */
+async function seedSchedulesAndSlots(providerId: number, centreId: number) {
+  for (const dayOfWeek of [1, 2, 3, 4, 5]) {
+    await pool.execute(
+      `INSERT INTO provider_schedules(provider_id, centre_id, day_of_week, open_time, close_time, slot_duration_minutes, is_active)
+       VALUES (?, ?, ?, '09:00', '17:00', 30, TRUE)`,
+      [providerId, centreId, dayOfWeek],
+    );
+  }
+  // Bookable slots for the next 14 days, generated from the centre schedule.
+  const start = new Date();
+  start.setUTCHours(0, 0, 0, 0);
+  start.setUTCDate(start.getUTCDate() + 1); // tomorrow
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + 13);
+  let created = 0;
+  for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+    const dayOfWeek = d.getUTCDay();
+    if (dayOfWeek < 1 || dayOfWeek > 5) continue;
+    let slotStart = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 9, 0));
+    const dayEnd = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 17, 0));
+    while (slotStart.getTime() + 30 * 60_000 <= dayEnd.getTime()) {
+      const slotEnd = new Date(slotStart.getTime() + 30 * 60_000);
+      await pool.execute(
+        `INSERT IGNORE INTO provider_slots(provider_id, centre_id, start_time, end_time, status)
+         VALUES (?, ?, ?, ?, 'available')`,
+        [providerId, centreId, slotStart, slotEnd],
+      );
+      created += 1;
+      slotStart = slotEnd;
+    }
+  }
+  process.stdout.write(`[seed] ${created} slots generated for centre ${centreId}\n`);
+}
+
 async function main() {
   await upsertUser('CareBridge Admin', 'admin@carebridge.local', '+2348000000001', 'admin');
   await upsertUser(
@@ -94,6 +138,13 @@ async function main() {
       `INSERT IGNORE INTO provider_users(provider_id, user_id, provider_role) VALUES (?, ?, 'owner')`,
       [providerId, ownerId],
     );
+    const centreId = await upsertCentre(
+      providerId,
+      `${c.display_name} Main Centre`,
+      c.address,
+      'Lagos',
+    );
+    await seedSchedulesAndSlots(providerId, centreId);
   }
   process.stdout.write(`[seed] done — all seeded accounts use password: ${password}\n`);
 }

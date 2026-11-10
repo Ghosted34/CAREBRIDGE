@@ -5,6 +5,7 @@ import { AppError } from '../../lib/errors.js';
 import type { Ctx } from '../../lib/http.js';
 import { assertTransition } from '../../lib/stateMachine.js';
 import * as repo from './slots.repo.js';
+import * as providersRepo from '../providers/providers.repo.js';
 import type {
   CreateSlotBody,
   GenerateSlotsBody,
@@ -19,16 +20,18 @@ export async function listSchedules(providerId: number) {
 export async function setSchedules(ctx: Ctx, providerId: number, body: SetSchedulesBody) {
   return withTransaction(async (tx) => {
     await assertCanActForProvider(tx, ctx.user, providerId, ['owner', 'scheduler']);
-    await repo.replaceSchedules(tx, providerId, body.schedules);
+    const centre = await providersRepo.findCentre(tx, body.centre_id);
+    if (!centre || centre.provider_id !== providerId) throw AppError.notFound('Operating centre');
+    await repo.replaceSchedules(tx, providerId, body.centre_id, body.schedules);
     await audit(tx, {
       actorUserId: ctx.user.id,
       action: 'PROVIDER_SCHEDULE_UPDATED',
-      entityType: 'provider',
-      entityId: providerId,
+      entityType: 'provider_centre',
+      entityId: body.centre_id,
       ip: ctx.ip,
       metadata: { days_count: body.schedules.length },
     });
-    return repo.findSchedulesByProvider(tx, providerId);
+    return repo.findSchedulesByCentre(tx, body.centre_id);
   });
 }
 
@@ -43,14 +46,18 @@ export async function createSlot(ctx: Ctx, providerId: number, body: CreateSlotB
 
   return withTransaction(async (tx) => {
     await assertCanActForProvider(tx, ctx.user, providerId, ['owner', 'scheduler', 'clinician']);
-    const id = await repo.insertSlot(tx, providerId, start, end);
+    const centre = await providersRepo.findCentre(tx, body.centre_id);
+    if (!centre || centre.provider_id !== providerId) {
+      throw AppError.notFound('Operating centre');
+    }
+    const id = await repo.insertCentreSlot(tx, body.centre_id, providerId, start, end);
     await audit(tx, {
       actorUserId: ctx.user.id,
       action: 'SLOT_CREATED',
       entityType: 'provider_slot',
       entityId: id,
       ip: ctx.ip,
-      metadata: { provider_id: providerId, start_time: body.start_time },
+      metadata: { provider_id: providerId, centre_id: body.centre_id, start_time: body.start_time },
     });
     return repo.findSlotById(tx, id);
   });
@@ -63,16 +70,21 @@ export async function generateSlots(ctx: Ctx, providerId: number, body: Generate
 
   return withTransaction(async (tx) => {
     await assertCanActForProvider(tx, ctx.user, providerId, ['owner', 'scheduler']);
+    const centre = await providersRepo.findCentre(tx, body.centre_id);
+    if (!centre || centre.provider_id !== providerId) {
+      throw AppError.notFound('Operating centre');
+    }
     const schedules = await repo.findSchedulesByProvider(tx, providerId);
-    if (!schedules.length) {
-      throw AppError.badRequest('Provider has no active schedules configured');
+    const schedulesByDay = new Map(
+      schedules
+        .filter((s) => s.is_active && s.centre_id === body.centre_id)
+        .map((s) => [s.day_of_week, s]),
+    );
+    if (!schedulesByDay.size) {
+      throw AppError.badRequest('This centre has no active schedules configured');
     }
 
-    const schedulesByDay = new Map(
-      schedules.filter((s) => s.is_active).map((s) => [s.day_of_week, s]),
-    );
     const slotsToCreate: { start_time: Date; end_time: Date }[] = [];
-
     const current = new Date(startDate);
     while (current <= endDate) {
       const dayOfWeek = current.getUTCDay();
@@ -119,14 +131,18 @@ export async function generateSlots(ctx: Ctx, providerId: number, body: Generate
       current.setUTCDate(current.getUTCDate() + 1);
     }
 
-    const createdCount = await repo.insertSlotsBulk(tx, providerId, slotsToCreate);
+    const createdCount = await repo.insertSlotsBulk(tx, body.centre_id, providerId, slotsToCreate);
     await audit(tx, {
       actorUserId: ctx.user.id,
       action: 'SLOTS_BULK_GENERATED',
       entityType: 'provider',
       entityId: providerId,
       ip: ctx.ip,
-      metadata: { generated: createdCount, range: [body.start_date, body.end_date] },
+      metadata: {
+        generated: createdCount,
+        centre_id: body.centre_id,
+        range: [body.start_date, body.end_date],
+      },
     });
 
     return { created_count: createdCount };
@@ -151,7 +167,7 @@ export async function cancelSlot(ctx: Ctx, slotId: number) {
       entityType: 'provider_slot',
       entityId: slotId,
       ip: ctx.ip,
-      metadata: { provider_id: slot.provider_id },
+      metadata: { provider_id: slot.provider_id, centre_id: slot.centre_id },
     });
 
     return repo.findSlotById(tx, slotId);

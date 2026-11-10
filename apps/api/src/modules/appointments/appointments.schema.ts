@@ -13,5 +13,11 @@ export const BookAppointmentBody = z.object({
   starts_at: z.iso.datetime({ offset: true }),
   ends_at: z.iso.datetime({ offset: true }),
   appointment_type: z.enum(['assessment', 'specialist', 'diagnostic', 'procedure', 'follow_up']),
+  /** Which operating centre of the provider the visit happens at. */
+  centre_id: z.number().int().positive(),
+  /** Book with a specific caregiver of that centre, or leave open for the clinic to assign. */
+  caregiver_user_id: z.number().int().positive().optional(),
+  /** Physical visit or a remote video/voice call. */
+  appointment_mode: z.enum(['physical', 'video_call', 'voice_call']).default('physical'),
   slot_id: z.number().int().positive().optional(),
 });

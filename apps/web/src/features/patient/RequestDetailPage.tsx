@@ -5,6 +5,7 @@ import { api } from '../../api/endpoints';
 import type { Appointment } from '../../api/types';
 import { BookingForm } from '../../components/BookingForm';
 import { JourneyTimeline } from '../../components/Journey';
+import { noteType } from '../../lib/labels';
 import {
   Button,
   Card,
@@ -157,6 +158,12 @@ export function RequestDetailPage() {
   const nextAppointment = myAppts
     .filter(isUpcoming)
     .sort((a, b) => a.starts_at.localeCompare(b.starts_at))[0];
+
+  // The latest visit that actually happened (checked in / completed) — consultation notes
+  // belong to it and are visible to the patient.
+  const seenAppts = myAppts.filter((a) => a.status === 'checked_in' || a.status === 'completed');
+  const latestSeen = seenAppts.slice().sort((a, b) => b.ends_at.localeCompare(a.ends_at))[0];
+
   const openOffers = (offers.data?.data ?? []).filter((o) => o.status === 'offered');
   const canCancel = !['completed', 'cancelled'].includes(r.status);
   const accepted = offers.data?.data.find((o) => o.status === 'accepted');
@@ -275,6 +282,8 @@ export function RequestDetailPage() {
             </Card>
           )}
 
+          {/* Consultation notes from the provider after the visit */}
+          <ConsultationNotes latestSeen={latestSeen} />
           {/* Service Estimates */}
           {estList.length > 0 && (
             <Card>
@@ -555,5 +564,41 @@ export function RequestDetailPage() {
         </div>
       </Modal>
     </>
+  );
+}
+
+function ConsultationNotes({ latestSeen }: { latestSeen: Appointment | undefined }) {
+  const notes = useQuery({
+    queryKey: ['appointment-notes', latestSeen?.id],
+    queryFn: () =>
+      latestSeen
+        ? api.appointmentNotes(latestSeen.id)
+        : Promise.resolve({ data: [], meta: { limit: 0, offset: 0, count: 0 } }),
+    enabled: Boolean(latestSeen),
+  });
+
+  if (!latestSeen) return null;
+
+  return (
+    <Card>
+      <h2>Consultation notes · {formatDateTime(latestSeen.starts_at)}</h2>
+      {notes.data?.data.length === 0 ? (
+        <p className="muted small">No consultation notes yet.</p>
+      ) : (
+        <ul className="list">
+          {(notes.data?.data ?? []).map((n) => (
+            <li className="list-item" key={n.id}>
+              <div className="list-item-main">
+                <div className="list-item-title">{noteType[n.note_type].label}</div>
+                <div className="meta">
+                  By {n.created_by_name} ·{formatDateTime(n.created_at)}
+                </div>
+                <div className="quote">{n.notes}</div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
   );
 }

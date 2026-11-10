@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { screen, within, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { Appointment, CareRequest, Offer } from '../../api/types';
 import { formatTimeRange } from '../../lib/time';
@@ -41,7 +41,12 @@ const appointment = (over: Partial<Appointment>): Appointment => ({
   patient_name: 'Ada Patient',
   provider_id: 3,
   provider: 'Ikeja Dental',
+  centre_id: 7,
+  centre: 'Ikeja Dental Main Centre',
+  caregiver_user_id: null,
+  caregiver: null,
   appointment_type: 'assessment',
+  appointment_mode: 'physical',
   starts_at: iso(day),
   ends_at: iso(day + 45 * 60_000),
   status: 'booked',
@@ -59,7 +64,25 @@ const mock = (appointments: Appointment[]) =>
     'GET /requests/12/estimates': { body: { data: [] } },
     'GET /requests/12/documents': { body: { data: [] } },
     'GET /requests/12/payments': { body: { data: [] } },
-    'GET /providers/3/slots': { body: { data: [] } },
+    'GET /providers/3/centres': {
+      body: {
+        data: [
+          {
+            id: 7,
+            provider_id: 3,
+            name: 'Main Centre',
+            address: '1 Awolowo Road',
+            city: 'Lagos',
+            phone: null,
+            is_active: true,
+            created_at: iso(-day),
+            updated_at: iso(-day),
+          },
+        ],
+      },
+    },
+    'GET /providers/3/centres/7/slots': { body: { data: [] } },
+    'GET /providers/3/centres/7/caregivers': { body: { data: [] } },
   });
 
 const render = () =>
@@ -74,7 +97,9 @@ describe('RequestDetailPage booking', () => {
     mock([]);
     render();
     expect(await screen.findByRole('heading', { name: 'Book an appointment' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Book appointment' })).toBeEnabled();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Book appointment' })).toBeEnabled(),
+    );
     expect(screen.queryByRole('heading', { name: 'Upcoming appointment' })).not.toBeInTheDocument();
   });
 

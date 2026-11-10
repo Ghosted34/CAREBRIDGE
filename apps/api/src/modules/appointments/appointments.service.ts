@@ -7,6 +7,7 @@ import type { Ctx } from '../../lib/http.js';
 import { assertTransition } from '../../lib/stateMachine.js';
 import type { Pagination } from '../../lib/validate.js';
 import * as notifications from '../notifications/notifications.service.js';
+import * as providersRepo from '../providers/providers.repo.js';
 import * as requestsRepo from '../requests/requests.repo.js';
 import * as slotsRepo from '../slots/slots.repo.js';
 import type { BookAppointmentBody } from './appointments.schema.js';
@@ -63,6 +64,24 @@ export async function book(c: Ctx, input: z.infer<typeof BookAppointmentBody>) {
     const providerId: number = request.assigned_provider_id;
     if (c.user.role !== 'patient') await assertCanActForProvider(tx, c.user, providerId);
 
+    // The visit happens at one of the provider's operating centres.
+    const centre = await providersRepo.findCentre(tx, input.centre_id);
+    if (!centre || centre.provider_id !== providerId) {
+      throw AppError.notFound('Operating centre');
+    }
+
+    // A specific caregiver must be an active caregiver of that centre.
+    if (input.caregiver_user_id) {
+      const caregiver = await providersRepo.findActiveCentreCaregiver(
+        tx,
+        input.centre_id,
+        input.caregiver_user_id,
+      );
+      if (!caregiver) {
+        throw AppError.notFound('Caregiver');
+      }
+    }
+
     // Serialise bookings per provider.
     await tx.execute('SELECT id FROM providers WHERE id = ? FOR UPDATE', [providerId]);
     if ((await repo.findOverlapping(tx, providerId, start, end)).length) {
@@ -70,7 +89,12 @@ export async function book(c: Ctx, input: z.infer<typeof BookAppointmentBody>) {
     }
     if (input.slot_id) {
       const slot = await slotsRepo.findSlotById(tx, input.slot_id, { forUpdate: true });
-      if (!slot || slot.provider_id !== providerId || slot.status !== 'available') {
+      if (
+        !slot ||
+        slot.provider_id !== providerId ||
+        slot.centre_id !== input.centre_id ||
+        slot.status !== 'available'
+      ) {
         throw AppError.conflict('SLOT_UNAVAILABLE', 'Selected slot is no longer available');
       }
     }
@@ -78,7 +102,10 @@ export async function book(c: Ctx, input: z.infer<typeof BookAppointmentBody>) {
       care_request_id: request.id,
       patient_user_id: request.patient_user_id,
       provider_id: providerId,
+      centre_id: input.centre_id,
+      caregiver_user_id: input.caregiver_user_id ?? null,
       appointment_type: input.appointment_type,
+      appointment_mode: input.appointment_mode,
       starts_at: start,
       ends_at: end,
       created_by_user_id: c.user.id,

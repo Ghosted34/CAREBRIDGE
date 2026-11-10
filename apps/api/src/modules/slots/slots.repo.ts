@@ -7,6 +7,7 @@ type DaySchedule = z.infer<typeof DayScheduleSchema>;
 export interface ProviderScheduleRow extends Row {
   id: number;
   provider_id: number;
+  centre_id: number;
   day_of_week: number;
   open_time: string;
   close_time: string;
@@ -17,6 +18,7 @@ export interface ProviderScheduleRow extends Row {
 export interface ProviderSlotRow extends Row {
   id: number;
   provider_id: number;
+  centre_id: number;
   start_time: string;
   end_time: string;
   status: 'available' | 'held' | 'booked' | 'cancelled';
@@ -29,7 +31,7 @@ export async function findSchedulesByProvider(
   providerId: number,
 ): Promise<ProviderScheduleRow[]> {
   const [rows] = await db.execute<ProviderScheduleRow[]>(
-    `SELECT id, provider_id, day_of_week, open_time, close_time, slot_duration_minutes, is_active
+    `SELECT id, provider_id, centre_id, day_of_week, open_time, close_time, slot_duration_minutes, is_active
        FROM provider_schedules
       WHERE provider_id = ?
       ORDER BY day_of_week ASC`,
@@ -38,18 +40,37 @@ export async function findSchedulesByProvider(
   return rows;
 }
 
+export async function findSchedulesByCentre(
+  db: Db,
+  centreId: number,
+): Promise<ProviderScheduleRow[]> {
+  const [rows] = await db.execute<ProviderScheduleRow[]>(
+    `SELECT id, provider_id, centre_id, day_of_week, open_time, close_time, slot_duration_minutes, is_active
+       FROM provider_schedules
+      WHERE centre_id = ?
+      ORDER BY day_of_week ASC`,
+    [centreId],
+  );
+  return rows;
+}
+
 export async function replaceSchedules(
   db: Db,
   providerId: number,
+  centreId: number,
   schedules: DaySchedule[],
 ): Promise<void> {
-  await db.execute(`DELETE FROM provider_schedules WHERE provider_id = ?`, [providerId]);
+  await db.execute(`DELETE FROM provider_schedules WHERE provider_id = ? AND centre_id = ?`, [
+    providerId,
+    centreId,
+  ]);
   for (const s of schedules) {
     await db.execute(
-      `INSERT INTO provider_schedules (provider_id, day_of_week, open_time, close_time, slot_duration_minutes, is_active)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO provider_schedules (provider_id, centre_id, day_of_week, open_time, close_time, slot_duration_minutes, is_active)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
         providerId,
+        centreId,
         s.day_of_week,
         s.open_time,
         s.close_time,
@@ -63,10 +84,45 @@ export async function replaceSchedules(
 export async function findSlots(
   db: Db,
   providerId: number,
-  query: ListSlotsQuery,
+  query: ListSlotsQuery & { centreId?: number },
 ): Promise<ProviderSlotRow[]> {
   const clauses = ['provider_id = ?'];
   const params: (string | number | Date)[] = [providerId];
+
+  if (query.centreId !== undefined) {
+    clauses.push('centre_id = ?');
+    params.push(query.centreId);
+  }
+  if (query.from) {
+    clauses.push('start_time >= ?');
+    params.push(new Date(query.from));
+  }
+  if (query.to) {
+    clauses.push('end_time <= ?');
+    params.push(new Date(query.to));
+  }
+  if (query.status) {
+    clauses.push('status = ?');
+    params.push(query.status);
+  }
+
+  const [rows] = await db.query<ProviderSlotRow[]>(
+    `SELECT id, provider_id, centre_id, start_time, end_time, status, appointment_id, created_at
+       FROM provider_slots
+      WHERE ${clauses.join(' AND ')}
+      ORDER BY start_time ASC`,
+    params,
+  );
+  return rows;
+}
+
+export async function findSlotsByCentre(
+  db: Db,
+  centreId: number,
+  query: ListSlotsQuery,
+): Promise<ProviderSlotRow[]> {
+  const clauses = ['centre_id = ?'];
+  const params: (string | number | Date)[] = [centreId];
 
   if (query.from) {
     clauses.push('start_time >= ?');
@@ -82,7 +138,7 @@ export async function findSlots(
   }
 
   const [rows] = await db.query<ProviderSlotRow[]>(
-    `SELECT id, provider_id, start_time, end_time, status, appointment_id, created_at
+    `SELECT id, provider_id, centre_id, start_time, end_time, status, appointment_id, created_at
        FROM provider_slots
       WHERE ${clauses.join(' AND ')}
       ORDER BY start_time ASC`,
@@ -97,7 +153,7 @@ export async function findSlotById(
   opts: { forUpdate?: boolean } = {},
 ): Promise<ProviderSlotRow | null> {
   const [rows] = await db.execute<ProviderSlotRow[]>(
-    `SELECT id, provider_id, start_time, end_time, status, appointment_id, created_at
+    `SELECT id, provider_id, centre_id, start_time, end_time, status, appointment_id, created_at
        FROM provider_slots
       WHERE id = ?${opts.forUpdate ? ' FOR UPDATE' : ''}`,
     [id],
@@ -107,29 +163,46 @@ export async function findSlotById(
 
 export async function insertSlot(
   db: Db,
+  centreId: number,
   providerId: number,
   startTime: Date,
   endTime: Date,
 ): Promise<number> {
   const [result] = await db.execute<Result>(
-    `INSERT INTO provider_slots (provider_id, start_time, end_time, status)
-     VALUES (?, ?, ?, 'available')`,
-    [providerId, startTime, endTime],
+    `INSERT INTO provider_slots (provider_id, centre_id, start_time, end_time, status)
+     VALUES (?, ?, ?, ?, 'available')`,
+    [providerId, centreId, startTime, endTime],
+  );
+  return result.insertId;
+}
+
+export async function insertCentreSlot(
+  db: Db,
+  centreId: number,
+  providerId: number,
+  startTime: Date,
+  endTime: Date,
+): Promise<number> {
+  const [result] = await db.execute<Result>(
+    `INSERT INTO provider_slots (provider_id, centre_id, start_time, end_time, status)
+     VALUES (?, ?, ?, ?, 'available')`,
+    [providerId, centreId, startTime, endTime],
   );
   return result.insertId;
 }
 
 export async function insertSlotsBulk(
   db: Db,
+  centreId: number,
   providerId: number,
   slots: { start_time: Date; end_time: Date }[],
 ): Promise<number> {
   let createdCount = 0;
   for (const slot of slots) {
     const [res] = await db.execute<Result>(
-      `INSERT IGNORE INTO provider_slots (provider_id, start_time, end_time, status)
-       VALUES (?, ?, ?, 'available')`,
-      [providerId, slot.start_time, slot.end_time],
+      `INSERT IGNORE INTO provider_slots (provider_id, centre_id, start_time, end_time, status)
+       VALUES (?, ?, ?, ?, 'available')`,
+      [providerId, centreId, slot.start_time, slot.end_time],
     );
     if (res.affectedRows > 0) createdCount++;
   }

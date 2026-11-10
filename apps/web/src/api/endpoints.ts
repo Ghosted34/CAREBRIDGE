@@ -5,6 +5,8 @@ import type {
   AdminUser,
   AppNotification,
   Appointment,
+  AppointmentMode,
+  AppointmentNote,
   AppointmentType,
   AssignedRequest,
   AuditLog,
@@ -27,6 +29,8 @@ import type {
   PaymentRecord,
   Policy,
   Provider,
+  ProviderCentre,
+  CentreCaregiver,
   ProviderMember,
   ProviderOffer,
   ProviderRole,
@@ -148,12 +152,65 @@ export const api = {
     starts_at: string;
     ends_at: string;
     appointment_type: AppointmentType;
+    centre_id: number;
+    caregiver_user_id?: number;
+    appointment_mode?: AppointmentMode;
     slot_id?: number;
   }) => post<Envelope<{ id: number }>>('/appointments', body),
   myAppointments: (p: { provider_id?: number } = {}) =>
     get<ListEnvelope<Appointment>>(`/appointments/mine${qs(p)}`),
   appointmentAction: (id: number, verb: AppointmentVerb) =>
     post<Envelope<{ id: number }>>(`/appointments/${id}/${verb}`),
+
+  // operating centres & capacity
+  providerCentres: (providerId: number) =>
+    get<ListEnvelope<ProviderCentre>>(`/providers/${providerId}/centres`),
+  addCentre: (
+    providerId: number,
+    body: { name: string; address: string; city: string; phone?: string },
+  ) => post<Envelope<ProviderCentre>>(`/providers/${providerId}/centres`, body),
+  updateCentre: (
+    centreId: number,
+    body: Partial<{
+      name: string;
+      address: string;
+      city: string;
+      phone: string | null;
+      is_active: boolean;
+    }>,
+  ) => put<Envelope<ProviderCentre>>(`/providers/centres/${centreId}`, body),
+  providerCentre: (centreId: number) =>
+    get<Envelope<ProviderCentre>>(`/providers/centres/${centreId}`),
+  providerCentreSchedules: (centreId: number) =>
+    get<Envelope<ProviderSchedule[]>>(`/providers/centres/${centreId}/schedules`),
+  setCentreSchedules: (
+    centreId: number,
+    schedules: Array<Omit<ProviderSchedule, 'id' | 'provider_id'>>,
+  ) => put<Envelope<ProviderSchedule[]>>(`/providers/centres/${centreId}/schedules`, { schedules }),
+  providerCentreSlots: (
+    centreId: number,
+    query: { from?: string; to?: string; status?: SlotStatus } = {},
+  ) => get<Envelope<ProviderSlot[]>>(`/providers/centres/${centreId}/slots${qs(query)}`),
+  createCentreSlot: (centreId: number, body: { start_time: string; end_time: string }) =>
+    post<Envelope<ProviderSlot>>(`/providers/centres/${centreId}/slots`, body),
+  generateCentreSlots: (centreId: number, body: { start_date: string; end_date: string }) =>
+    post<Envelope<{ created_count: number }>>(
+      `/providers/centres/${centreId}/slots/generate`,
+      body,
+    ),
+  cancelCentreSlot: (id: number) => post<Envelope<ProviderSlot>>(`/slots/${id}/cancel`),
+
+  // centre caregivers
+  centreCaregivers: (centreId: number) =>
+    get<ListEnvelope<CentreCaregiver>>(`/providers/centres/${centreId}/caregivers`),
+  addCentreCaregiver: (centreId: number, body: { user_id: number; is_active?: boolean }) =>
+    post<Envelope<CentreCaregiver>>(`/providers/centres/${centreId}/caregivers`, body),
+
+  // appointment notes (provider adds after the patient has been seen)
+  appointmentNotes: (appointmentId: number) =>
+    get<ListEnvelope<AppointmentNote>>(`/appointments/${appointmentId}/notes`),
+  addAppointmentNote: (appointmentId: number, body: { note_type: string; notes: string }) =>
+    post<Envelope<AppointmentNote>>(`/appointments/${appointmentId}/notes`, body),
 
   // capacity & slots
   providerSchedules: (providerId: number) =>

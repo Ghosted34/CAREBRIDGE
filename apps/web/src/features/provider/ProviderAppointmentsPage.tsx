@@ -1,23 +1,30 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState, type FormEvent } from 'react';
 import { api, type AppointmentVerb } from '../../api/endpoints';
-import type { AppointmentStatus } from '../../api/types';
+import type { Appointment, AppointmentNote } from '../../api/types';
 import {
   Button,
   Card,
   EmptyState,
   ErrorNote,
+  Field,
+  Modal,
   PageHeader,
   Pill,
   Spinner,
 } from '../../components/ui';
-import { appointmentStatus, appointmentType } from '../../lib/labels';
-import { formatTimeRange } from '../../lib/time';
+import { appointmentMode, appointmentStatus, appointmentType } from '../../lib/labels';
+import { formatDateTime } from '../../lib/time';
 import { useActiveClinic } from './activeClinic';
 
 const ACTIONS: Partial<
   Record<
-    AppointmentStatus,
-    { verb: AppointmentVerb; label: string; variant?: 'ghost' | 'danger' }[]
+    Appointment['status'],
+    {
+      verb: 'confirm' | 'check-in' | 'complete' | 'no-show' | 'cancel';
+      label: string;
+      variant?: 'ghost' | 'danger';
+    }[]
   >
 > = {
   booked: [
@@ -32,6 +39,16 @@ const ACTIONS: Partial<
   checked_in: [{ verb: 'complete', label: 'Complete' }],
 };
 
+const NOTE_TYPES: Array<{
+  value: AppointmentNote['note_type'];
+  label: string;
+}> = [
+  { value: 'follow_up', label: 'Follow-up plan' },
+  { value: 'referral', label: 'Referral for further diagnosis' },
+  { value: 'prescription', label: 'Prescription' },
+  { value: 'consultation_closed', label: 'Close consultation' },
+];
+
 export function ProviderAppointmentsPage() {
   const queryClient = useQueryClient();
   const { clinicId } = useActiveClinic();
@@ -45,9 +62,25 @@ export function ProviderAppointmentsPage() {
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['appointments'] }),
   });
 
+  const [noteFor, setNoteFor] = useState<Appointment | null>(null);
+  const [noteTypeValue, setNoteTypeValue] = useState<AppointmentNote['note_type']>('follow_up');
+  const [noteText, setNoteText] = useState('');
+  const addNote = useMutation({
+    mutationFn: () =>
+      api.addAppointmentNote(noteFor!.id, {
+        note_type: noteTypeValue,
+        notes: noteText,
+      }),
+    onSuccess: () => {
+      setNoteFor(null);
+      setNoteText('');
+      void queryClient.invalidateQueries({ queryKey: ['appointments'] });
+    },
+  });
+
   return (
     <>
-      <PageHeader title="Appointments" subtitle="Upcoming first. All times are Lagos time." />
+      <PageHeader title="Appointments" subtitle="All times are Lagos time." />
       <ErrorNote error={act.error} />
       {q.isPending ? (
         <Spinner />
@@ -63,8 +96,10 @@ export function ProviderAppointmentsPage() {
                 <tr>
                   <th>When</th>
                   <th>Patient</th>
+                  <th>Centre</th>
                   <th>Type</th>
-                  <th>Provider</th>
+                  <th>Mode</th>
+                  <th>Caregiver</th>
                   <th>Status</th>
                   <th aria-label="Actions" />
                 </tr>
@@ -72,13 +107,19 @@ export function ProviderAppointmentsPage() {
               <tbody>
                 {q.data.data.map((a) => (
                   <tr key={a.id}>
-                    <td>{formatTimeRange(a.starts_at, a.ends_at)}</td>
+                    <td>{formatDateTime(a.starts_at)}</td>
                     <td>
                       {a.patient_name}
                       <div className="muted small">Request #{a.care_request_id}</div>
                     </td>
+                    <td>{a.centre ?? '—'}</td>
                     <td>{appointmentType[a.appointment_type]}</td>
-                    <td>{a.provider}</td>
+                    <td>
+                      <Pill tone={appointmentMode[a.appointment_mode].tone}>
+                        {appointmentMode[a.appointment_mode].label}
+                      </Pill>
+                    </td>
+                    <td>{a.caregiver ?? '—'}</td>
                     <td>
                       <Pill tone={appointmentStatus[a.status].tone}>
                         {appointmentStatus[a.status].label}
@@ -101,6 +142,16 @@ export function ProviderAppointmentsPage() {
                             {x.label}
                           </Button>
                         ))}
+                        {(a.status === 'checked_in' || a.status === 'completed') && (
+                          <Button
+                            variant="ghost"
+                            className="btn-sm"
+                            busy={addNote.isPending}
+                            onClick={() => setNoteFor(a)}
+                          >
+                            Add note
+                          </Button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -110,6 +161,57 @@ export function ProviderAppointmentsPage() {
           </div>
         </Card>
       )}
+
+      <Modal
+        open={!!noteFor}
+        title={`Add consultation note · #{noteFor?.care_request_id ?? ''}`}
+        onClose={() => setNoteFor(null)}
+      >
+        {noteFor && (
+          <form
+            className="form"
+            onSubmit={(e: FormEvent) => {
+              e.preventDefault();
+              addNote.mutate();
+            }}
+          >
+            <p className="hint">
+              Notes can only be added after the patient has been checked in. They are shared with
+              the patient and never appear in public logs.
+            </p>
+            <Field label="Note type">
+              <select
+                value={noteTypeValue}
+                onChange={(e) => setNoteTypeValue(e.target.value as AppointmentNote['note_type'])}
+              >
+                {NOTE_TYPES.map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Notes" hint="Follow-up plan, referral, prescription, or closing summary.">
+              <textarea
+                rows={3}
+                required
+                maxLength={4000}
+                value={noteText}
+                onChange={(e) => setNoteText(e.target.value)}
+              />
+            </Field>
+            <ErrorNote error={addNote.error} />
+            <div className="btn-row">
+              <Button type="button" variant="ghost" onClick={() => setNoteFor(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" busy={addNote.isPending} disabled={!noteText.trim()}>
+                Save note
+              </Button>
+            </div>
+          </form>
+        )}
+      </Modal>
     </>
   );
 }
