@@ -44,13 +44,18 @@ export async function book(c: Ctx, input: z.infer<typeof BookAppointmentBody>) {
     throw AppError.badRequest('Appointments cannot exceed 8 hours');
   if (start.getTime() <= Date.now()) throw AppError.badRequest('starts_at must be in the future');
 
-  const providerId: number = input.provider_id;
-
   return withTransaction(async (tx) => {
     const request = await requestsRepo.findById(tx, input.care_request_id, { forUpdate: true });
     if (!request) throw AppError.notFound('Care request');
     if (c.user.role === 'patient' && request.patient_user_id !== c.user.id)
       throw AppError.notFound('Care request');
+
+    // Provider: explicit body field, or the care request's assigned provider.
+    const providerId: number | null = input.provider_id ?? request.assigned_provider_id ?? null;
+    if (!providerId) {
+      throw AppError.conflict('REQUEST_NOT_BOOKABLE', 'No provider assigned to this care request');
+    }
+
     // Staff booking on behalf of a patient must belong to the provider they're booking with.
     if (c.user.role !== 'patient') await assertCanActForProvider(tx, c.user, providerId);
 

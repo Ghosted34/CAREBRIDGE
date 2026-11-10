@@ -70,7 +70,15 @@ export function createApp() {
   const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist', 'public');
   app.use(express.static(publicDir));
   app.use((_req, res) => {
-    res.sendFile(path.join(publicDir, 'index.html'));
+    // API routes that don't match should 404 via the notFoundHandler below.
+    // Only non-API routes fall through to the SPA's index.html.
+    if (_req.path.startsWith('/api/')) {
+      res.status(404).json({
+        error: { code: 'NOT_FOUND', message: 'Not found', details: {} },
+      });
+    } else {
+      res.sendFile(path.join(publicDir, 'index.html'));
+    }
   });
 
   app.use(notFoundHandler);
