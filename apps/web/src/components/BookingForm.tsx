@@ -17,6 +17,18 @@ const PROBLEMS = [
   'Other',
 ];
 
+/** Maps the patient-facing problem label to a provider specialty for directory search. */
+const PROBLEM_SPECIALTY: Record<string, string> = {
+  'Toothache / pain': 'dentistry',
+  'Root canal assessment': 'endodontics',
+  'Cleaning and check-up': 'dentistry',
+  'Broken or chipped tooth': 'dentistry',
+  'Gum problems': 'dentistry',
+  'Braces / orthodontic consultation': 'dentistry',
+  'Tooth extraction': 'dentistry',
+  Other: 'dentistry',
+};
+
 type Step = 'problem' | 'provider' | 'centre' | 'slot' | 'confirm';
 
 /**
@@ -63,7 +75,10 @@ export function BookingForm({
       }
       // No care request yet (NewRequestPage flow): match providers from the
       // public directory by specialty + city. No request is created until confirm.
-      const result = await api.providers({ specialty: problem, city: 'Lagos' });
+      const result = await api.providers({
+        specialty: PROBLEM_SPECIALTY[problem] ?? 'dentistry',
+        city: 'Lagos',
+      });
       return {
         data: result.data.map((p) => ({
           provider_id: p.id,
