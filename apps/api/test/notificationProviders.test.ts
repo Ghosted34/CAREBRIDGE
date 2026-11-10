@@ -204,6 +204,6 @@ describe('worker + Termii end to end (HTTP faked)', () => {
     const body = JSON.parse(
       String((fetchFn.mock.calls[0] as unknown as [string, RequestInit])[1].body),
     );
-    expect(body.sms).toMatch(/^CareLynk: a verified provider has responded to your request #\d+/);
+    expect(body.sms).toMatch(/^CareLynk: Test Clinic confirmed your appointment on/);
   });
 });
