@@ -13,6 +13,7 @@ export function CapacityPage() {
   // Capacity follows the clinic picked in the topbar switcher.
   const { clinicId } = useActiveClinic();
   const [generateOpen, setGenerateOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [startDate, setStartDate] = useState(() => toLagosLocal(new Date()).slice(0, 10));
   const [endDate, setEndDate] = useState(() =>
     toLagosLocal(new Date(Date.now() + 14 * 86_400_000)).slice(0, 10),
@@ -44,6 +45,14 @@ export function CapacityPage() {
     },
   });
 
+  const setSchedules = useMutation({
+    mutationFn: () => api.setProviderSchedules(activeId!, daySchedules),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['schedules', activeId] });
+      setEditOpen(false);
+    },
+  });
+
   const cancelSlot = useMutation({
     mutationFn: (id: number) => api.cancelSlot(id),
     onSuccess: () => {
@@ -54,6 +63,34 @@ export function CapacityPage() {
   const schedules = schedulesData?.data ?? [];
   const slots = slotsData?.data ?? [];
 
+  // Editable copy of the weekly schedule, keyed by day_of_week.
+  const [daySchedules, setDaySchedules] = useState<
+    Array<{
+      day_of_week: number;
+      open_time: string;
+      close_time: string;
+      slot_duration_minutes: number;
+      is_active: boolean;
+    }>
+  >(() =>
+    DAYS.map((_, i) => {
+      const existing = schedules.find((s) => s.day_of_week === i);
+      return {
+        day_of_week: i,
+        open_time: existing?.open_time ?? '09:00',
+        close_time: existing?.close_time ?? '17:00',
+        slot_duration_minutes: existing?.slot_duration_minutes ?? 30,
+        is_active: Boolean(existing?.is_active ?? true),
+      };
+    }),
+  );
+
+  const updateDay = (dayOfWeek: number, key: string, value: string | number | boolean) => {
+    setDaySchedules((prev) =>
+      prev.map((d) => (d.day_of_week === dayOfWeek ? { ...d, [key]: value } : d)),
+    );
+  };
+
   return (
     <div className="stack gap-4">
       <div className="section-head">
@@ -62,6 +99,9 @@ export function CapacityPage() {
           <p className="hint">Manage operating hours and real bookable appointment capacity.</p>
         </div>
         <div className="cluster gap-2">
+          <Button onClick={() => setEditOpen(true)} disabled={!activeId}>
+            Edit hours
+          </Button>
           <Button onClick={() => setGenerateOpen(true)} disabled={!activeId}>
             Generate slots
           </Button>
@@ -75,7 +115,7 @@ export function CapacityPage() {
             <p>Loading schedule…</p>
           ) : schedules.length === 0 ? (
             <EmptyState title="No operating hours configured">
-              Configure opening hours for this clinic to enable automated slot generation.
+              Use “Edit hours” to set opening times for this clinic.
             </EmptyState>
           ) : (
             <div className="table-wrap">
@@ -197,6 +237,99 @@ export function CapacityPage() {
             </Button>
             <Button type="submit" busy={generate.isPending}>
               Generate slots
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal open={editOpen} title="Set operating hours" onClose={() => setEditOpen(false)}>
+        <form
+          className="form"
+          onSubmit={(e: FormEvent) => {
+            e.preventDefault();
+            setSchedules.mutate();
+          }}
+        >
+          <p className="hint">
+            Set open/close times and slot duration for each day. Inactive days won&apos;t generate
+            slots.
+          </p>
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Day</th>
+                  <th>Opens</th>
+                  <th>Closes</th>
+                  <th>Slot (min)</th>
+                  <th>Active</th>
+                </tr>
+              </thead>
+              <tbody>
+                {daySchedules.map((d) => (
+                  <tr key={d.day_of_week}>
+                    <td>{DAYS[d.day_of_week]}</td>
+                    <td>
+                      <Field label="Open time" className="span-1">
+                        <input
+                          type="time"
+                          required
+                          value={d.open_time}
+                          onChange={(e) => updateDay(d.day_of_week, 'open_time', e.target.value)}
+                        />
+                      </Field>
+                    </td>
+                    <td>
+                      <Field label="Close time" className="span-1">
+                        <input
+                          type="time"
+                          required
+                          value={d.close_time}
+                          onChange={(e) => updateDay(d.day_of_week, 'close_time', e.target.value)}
+                        />
+                      </Field>
+                    </td>
+                    <td>
+                      <Field label="Duration" className="span-1">
+                        <input
+                          type="number"
+                          required
+                          min="5"
+                          max="480"
+                          step="5"
+                          value={d.slot_duration_minutes}
+                          onChange={(e) =>
+                            updateDay(
+                              d.day_of_week,
+                              'slot_duration_minutes',
+                              Number(e.target.value),
+                            )
+                          }
+                        />
+                      </Field>
+                    </td>
+                    <td>
+                      <label className="check">
+                        <input
+                          type="checkbox"
+                          checked={d.is_active}
+                          onChange={(e) => updateDay(d.day_of_week, 'is_active', e.target.checked)}
+                        />
+                        {d.is_active ? 'Active' : 'Closed'}
+                      </label>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <ErrorNote error={setSchedules.error} />
+          <div className="btn-row">
+            <Button variant="ghost" onClick={() => setEditOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" busy={setSchedules.isPending}>
+              Save hours
             </Button>
           </div>
         </form>
