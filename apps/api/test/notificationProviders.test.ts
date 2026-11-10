@@ -45,7 +45,7 @@ describe('Termii adapter', () => {
     const r = await sms.send({
       to: '+234 801 234 5678',
       subject: 'ignored',
-      text: 'CareBridge: hello',
+      text: 'CareLynk: hello',
     });
     expect(r).toEqual({ providerMessageId: '3017544054459083819856413' });
 
@@ -56,7 +56,7 @@ describe('Termii adapter', () => {
       api_key: 'TLtestkey1234567890',
       to: '2348012345678',
       from: 'CareBridge',
-      sms: 'CareBridge: hello',
+      sms: 'CareLynk: hello',
       type: 'plain',
       channel: 'dnd', // transactional route by default
     });
@@ -195,6 +195,6 @@ describe('worker + Termii end to end (HTTP faked)', () => {
     const body = JSON.parse(
       String((fetchFn.mock.calls[0] as unknown as [string, RequestInit])[1].body),
     );
-    expect(body.sms).toMatch(/^CareBridge: a verified provider has responded to your request #\d+/);
+    expect(body.sms).toMatch(/^CareLynk: a verified provider has responded to your request #\d+/);
   });
 });

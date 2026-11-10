@@ -155,7 +155,7 @@ export async function acceptedRequest() {
   const patient = await makeUser('patient');
   const providerId = await makeProvider();
   const staff = await makeStaff(providerId, 'owner');
-  const requestId = await makeRequest(patient, { target_provider_id: providerId });
+  const requestId = await makeRequest(patient);
   const booked = await api
     .post('/api/v1/appointments')
     .set(patient.auth)
@@ -170,7 +170,6 @@ export async function acceptedRequest() {
       `acceptedRequest booking failed: ${booked.status} ${JSON.stringify(booked.body)}`,
     );
   const apptId = booked.body.data.id as number;
-  await api.post(`/api/v1/appointments/${apptId}/confirm`).set(staff.auth);
   return { patient, providerId, staff, requestId, apptId };
 }
 

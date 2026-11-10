@@ -90,7 +90,7 @@ export async function book(c: Ctx, input: z.infer<typeof BookAppointmentBody>) {
     }
     await audit(tx, {
       actorUserId: c.user.id,
-      action: 'APPOINTMENT_REQUESTED',
+      action: 'APPOINTMENT_BOOKED',
       entityType: 'appointment',
       entityId: id,
       ip: c.ip,
