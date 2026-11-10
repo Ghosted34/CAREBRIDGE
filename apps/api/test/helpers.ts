@@ -155,7 +155,7 @@ export async function acceptedRequest() {
   const patient = await makeUser('patient');
   const providerId = await makeProvider();
   const staff = await makeStaff(providerId, 'owner');
-  const requestId = await makeRequest(patient);
+  const requestId = await makeRequest(patient, { target_provider_id: providerId });
   const booked = await api
     .post('/api/v1/appointments')
     .set(patient.auth)
