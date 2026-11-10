@@ -130,8 +130,7 @@ export async function get(c: Ctx, id: number) {
   if (isPlatformStaff(c.user)) return request;
   if (c.user.role === 'provider_staff') {
     const mine = await memberProviderIds(pool, c.user.id);
-    const related = [request.assigned_provider_id, ...(await repo.offeringProviderIds(pool, id))];
-    if (related.some((pid) => pid && mine.includes(pid))) return request;
+    if (request.assigned_provider_id && mine.includes(request.assigned_provider_id)) return request;
   }
   throw AppError.notFound('Care request'); // 404, not 403: don't confirm the request exists
 }

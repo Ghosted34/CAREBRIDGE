@@ -242,6 +242,7 @@ export type SlotStatus = 'available' | 'held' | 'booked' | 'cancelled';
 export interface ProviderSchedule {
   id: number;
   provider_id: number;
+  centre_id: number;
   day_of_week: number;
   open_time: string;
   close_time: string;

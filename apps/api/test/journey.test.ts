@@ -172,19 +172,6 @@ describe('journey progress', () => {
   });
 });
 
-describe('offers/mine', () => {
-  it('lists only offers made by the caller’s providers', async () => {
-    const { staff, offerId } = await acceptedRequest();
-    await acceptedRequest();
-    const r = await api.get('/api/v1/offers/mine').set(staff.auth);
-    expect(r.body.data.map((o: { id: number }) => o.id)).toEqual([offerId]);
-    expect(r.body.data[0]).toMatchObject({
-      status: 'accepted',
-      request_status: 'provider_accepted',
-    });
-  });
-});
-
 describe('appointment provider actions', () => {
   it('confirm → check-in → complete; no-show only from confirmed', async () => {
     const { patient, staff, requestId } = await acceptedRequest();

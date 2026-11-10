@@ -175,4 +175,3 @@ export async function matchingProviders(db: Db, requestId: number) {
   );
   return rows.map((r) => ({ id: r.id as number, name: r.display_name as string }));
 }
-

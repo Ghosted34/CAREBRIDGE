@@ -165,18 +165,34 @@ export const api = {
   // capacity & slots
   providerSchedules: (providerId: number) =>
     get<Envelope<ProviderSchedule[]>>(`/providers/${providerId}/schedules`),
+  providerSchedulesByCentre: (providerId: number, centreId: number) =>
+    get<Envelope<ProviderSchedule[]>>(`/providers/${providerId}/centres/${centreId}/schedules`),
   setProviderSchedules: (
     providerId: number,
-    schedules: Array<Omit<ProviderSchedule, 'id' | 'provider_id'>>,
-  ) => put<Envelope<ProviderSchedule[]>>(`/providers/${providerId}/schedules`, { schedules }),
+    centreId: number,
+    schedules: Array<Omit<ProviderSchedule, 'id' | 'provider_id' | 'centre_id'>>,
+  ) =>
+    put<Envelope<ProviderSchedule[]>>(`/providers/${providerId}/schedules`, {
+      centre_id: centreId,
+      schedules,
+    }),
   providerSlots: (
     providerId: number,
     query: { from?: string; to?: string; status?: SlotStatus } = {},
   ) => get<Envelope<ProviderSlot[]>>(`/providers/${providerId}/slots${qs(query)}`),
-  createSlot: (providerId: number, body: { start_time: string; end_time: string }) =>
-    post<Envelope<ProviderSlot>>(`/providers/${providerId}/slots`, body),
-  generateSlots: (providerId: number, body: { start_date: string; end_date: string }) =>
-    post<Envelope<{ created_count: number }>>(`/providers/${providerId}/slots/generate`, body),
+  createSlot: (
+    providerId: number,
+    body: { centre_id: number; start_time: string; end_time: string },
+  ) => post<Envelope<ProviderSlot>>(`/providers/${providerId}/slots`, body),
+  generateSlots: (
+    providerId: number,
+    centreId: number,
+    body: { start_date: string; end_date: string },
+  ) =>
+    post<Envelope<{ created_count: number }>>(`/providers/${providerId}/slots/generate`, {
+      centre_id: centreId,
+      ...body,
+    }),
   cancelSlot: (id: number) => post<Envelope<ProviderSlot>>(`/slots/${id}/cancel`),
   updateSlotPrice: (id: number, body: { price: number; currency: string }) =>
     post<Envelope<ProviderSlot>>(`/slots/${id}/price`, body),

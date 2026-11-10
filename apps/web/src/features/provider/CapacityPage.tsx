@@ -1,12 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import { api } from '../../api/endpoints';
+import type { Centre } from '../../api/types';
 import { Button, Card, EmptyState, ErrorNote, Field, Modal, Pill } from '../../components/ui';
 import { formatDateTime, toLagosLocal } from '../../lib/time';
 import { slotStatus } from '../../lib/labels';
 import { useActiveClinic } from './activeClinic';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+type DayScheduleInput = {
+  day_of_week: number;
+  open_time: string;
+  close_time: string;
+  slot_duration_minutes: number;
+  is_active: boolean;
+};
 
 export function CapacityPage() {
   const queryClient = useQueryClient();
@@ -20,11 +29,23 @@ export function CapacityPage() {
   );
 
   const activeId = clinicId;
+  const [selectedCentreId, setSelectedCentreId] = useState<number | null>(null);
+
+  const { data: centresData } = useQuery({
+    queryKey: ['centres', activeId],
+    queryFn: () => (activeId ? api.centres(activeId) : null),
+    enabled: Boolean(activeId),
+  });
+
+  const centres = centresData?.data ?? [];
 
   const { data: schedulesData, isLoading: schedulesLoading } = useQuery({
-    queryKey: ['schedules', activeId],
-    queryFn: () => (activeId ? api.providerSchedules(activeId) : null),
-    enabled: Boolean(activeId),
+    queryKey: ['schedules', activeId, selectedCentreId],
+    queryFn: () =>
+      activeId && selectedCentreId
+        ? api.providerSchedulesByCentre(activeId, selectedCentreId)
+        : null,
+    enabled: Boolean(activeId) && Boolean(selectedCentreId),
   });
 
   const { data: slotsData, isLoading: slotsLoading } = useQuery({
@@ -35,7 +56,7 @@ export function CapacityPage() {
 
   const generate = useMutation({
     mutationFn: () =>
-      api.generateSlots(activeId!, {
+      api.generateSlots(activeId!, selectedCentreId!, {
         start_date: startDate,
         end_date: endDate,
       }),
@@ -46,7 +67,7 @@ export function CapacityPage() {
   });
 
   const setSchedules = useMutation({
-    mutationFn: () => api.setProviderSchedules(activeId!, daySchedules),
+    mutationFn: () => api.setProviderSchedules(activeId!, selectedCentreId!, daySchedules),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['schedules', activeId] });
       setEditOpen(false);
@@ -60,35 +81,40 @@ export function CapacityPage() {
     },
   });
 
-  const schedules = schedulesData?.data ?? [];
+  const schedules = useMemo(() => schedulesData?.data ?? [], [schedulesData]);
   const slots = slotsData?.data ?? [];
 
-  // Editable copy of the weekly schedule, keyed by day_of_week.
-  const [daySchedules, setDaySchedules] = useState<
-    Array<{
-      day_of_week: number;
-      open_time: string;
-      close_time: string;
-      slot_duration_minutes: number;
-      is_active: boolean;
-    }>
-  >(() =>
-    DAYS.map((_, i) => {
-      const existing = schedules.find((s) => s.day_of_week === i);
-      return {
-        day_of_week: i,
-        open_time: existing?.open_time ?? '09:00',
-        close_time: existing?.close_time ?? '17:00',
-        slot_duration_minutes: existing?.slot_duration_minutes ?? 30,
-        is_active: Boolean(existing?.is_active ?? true),
-      };
-    }),
+  // Base schedules fetched from the API, keyed by day_of_week.
+  const baseSchedules = useMemo(
+    () =>
+      DAYS.map((_, dayIndex): DayScheduleInput => {
+        const existing = schedules.find((s) => s.day_of_week === dayIndex);
+        return {
+          day_of_week: dayIndex,
+          open_time: existing?.open_time ?? '09:00',
+          close_time: existing?.close_time ?? '17:00',
+          slot_duration_minutes: existing?.slot_duration_minutes ?? 30,
+          is_active: Boolean(existing?.is_active ?? true),
+        };
+      }),
+    [schedules],
   );
 
+  // User edits layered on top of the base schedules.
+  const [edits, setEdits] = useState<Map<number, Partial<DayScheduleInput>>>(new Map());
+
+  const daySchedules = baseSchedules.map((s) => ({
+    ...s,
+    ...edits.get(s.day_of_week),
+  }));
+
   const updateDay = (dayOfWeek: number, key: string, value: string | number | boolean) => {
-    setDaySchedules((prev) =>
-      prev.map((d) => (d.day_of_week === dayOfWeek ? { ...d, [key]: value } : d)),
-    );
+    setEdits((prev) => {
+      const next = new Map(prev);
+      const current = next.get(dayOfWeek) ?? {};
+      next.set(dayOfWeek, { ...current, [key]: value });
+      return next;
+    });
   };
 
   return (
@@ -99,10 +125,26 @@ export function CapacityPage() {
           <p className="hint">Manage operating hours and real bookable appointment capacity.</p>
         </div>
         <div className="cluster gap-2">
-          <Button onClick={() => setEditOpen(true)} disabled={!activeId}>
+          {centres.length > 0 ? (
+            <Field label="Centre">
+              <select
+                required
+                value={selectedCentreId == null ? '' : String(selectedCentreId)}
+                onChange={(e) => setSelectedCentreId(Number(e.target.value) || null)}
+              >
+                <option value="">Select a centre…</option>
+                {centres.map((c: Centre) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          ) : null}
+          <Button onClick={() => setEditOpen(true)} disabled={!selectedCentreId}>
             Edit hours
           </Button>
-          <Button onClick={() => setGenerateOpen(true)} disabled={!activeId}>
+          <Button onClick={() => setGenerateOpen(true)} disabled={!selectedCentreId}>
             Generate slots
           </Button>
         </div>
@@ -111,11 +153,15 @@ export function CapacityPage() {
       <div className="grid col-2 gap-4">
         <Card>
           <h3 className="mb-2">Operating schedule</h3>
-          {schedulesLoading ? (
+          {selectedCentreId === null ? (
+            <EmptyState title="Select a centre">
+              Pick a centre above to view and edit its operating hours.
+            </EmptyState>
+          ) : schedulesLoading ? (
             <p>Loading schedule…</p>
           ) : schedules.length === 0 ? (
             <EmptyState title="No operating hours configured">
-              Use “Edit hours” to set opening times for this clinic.
+              Use “Edit hours” to set opening times for this centre.
             </EmptyState>
           ) : (
             <div className="table-wrap">
@@ -151,7 +197,11 @@ export function CapacityPage() {
 
         <Card>
           <h3 className="mb-2">Upcoming bookable slots</h3>
-          {slotsLoading ? (
+          {selectedCentreId === null ? (
+            <EmptyState title="Select a centre">
+              Pick a centre above to view its generated slots.
+            </EmptyState>
+          ) : slotsLoading ? (
             <p>Loading slots…</p>
           ) : slots.length === 0 ? (
             <EmptyState title="No slots generated">

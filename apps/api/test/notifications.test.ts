@@ -131,9 +131,9 @@ describe('events create notifications', () => {
     expect(stored).not.toContain('Root canal');
     const inbox = await api.get('/api/v1/notifications').set(patient.auth);
     expect(JSON.stringify(inbox.body)).not.toContain('molar');
-    await expect(
-      notify(pool, [patient.id], 'new_request', { description: 'x' }),
-    ).rejects.toThrow(/must not contain/);
+    await expect(notify(pool, [patient.id], 'new_request', { description: 'x' })).rejects.toThrow(
+      /must not contain/,
+    );
   });
 });
 
@@ -184,13 +184,9 @@ describe('worker', () => {
     const email = recordingProvider('email');
     const r = await processBatch({ sms, email });
     expect(r).toEqual({ sent: 2, retrying: 0, failed: 0, skipped: 0 });
-    expect(sms.sent[0]!.text).toMatch(
-      /^CareBridge: .+ has confirmed your appointment on/,
-    );
+    expect(sms.sent[0]!.text).toMatch(/^CareBridge: .+ has confirmed your appointment on/);
     expect(sms.sent[0]!.to).toMatch(/^\+234/);
-    expect(email.sent[0]!.text).toMatch(
-      /Open CareBridge: .*provider\/patients/,
-    );
+    expect(email.sent[0]!.text).toMatch(/Open CareBridge: .*provider\/patients/);
     expect((await rows("channel <> 'in_app'")).map((x) => x.status)).toEqual(['sent', 'sent']);
     expect(await processBatch({ sms, email })).toEqual({
       sent: 0,
