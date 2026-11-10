@@ -163,14 +163,17 @@ export async function searchStaff(c: Ctx, q: z.infer<typeof SearchStaffQuery>) {
 }
 
 /** Clinic owner lists the operating centres of their facility.
- * Patients may read centres for a provider they have an open care request with. */
+ * Patients may read centres to browse for booking; care_request_id is optional
+ * and only used when the patient already has an open request they're continuing. */
 export async function listCentres(c: Ctx, providerId: number, careRequestId?: number) {
   if (c.user.role === 'patient') {
-    if (!careRequestId) throw AppError.forbidden('Care request required');
-    const request = await requestsRepo.findById(pool, careRequestId);
-    if (!request || request.patient_user_id !== c.user.id) throw AppError.notFound('Care request');
-    if (!['submitted', 'matching'].includes(request.status))
-      throw AppError.forbidden('Cannot view centres for this request');
+    if (careRequestId !== undefined) {
+      const request = await requestsRepo.findById(pool, careRequestId);
+      if (!request || request.patient_user_id !== c.user.id)
+        throw AppError.notFound('Care request');
+      if (!['submitted', 'matching'].includes(request.status))
+        throw AppError.forbidden('Cannot view centres for this request');
+    }
   } else {
     await assertOwner(pool, c.user, providerId);
   }
@@ -239,14 +242,17 @@ export async function updateCentre(
 }
 
 /** Clinic owner lists caregivers at a centre.
- * Patients may read caregivers for a provider they have an open care request with. */
+ * Patients may read caregivers to browse for booking; care_request_id is optional
+ * and only used when the patient already has an open request they're continuing. */
 export async function listCaregivers(c: Ctx, providerId: number, careRequestId?: number) {
   if (c.user.role === 'patient') {
-    if (!careRequestId) throw AppError.forbidden('Care request required');
-    const request = await requestsRepo.findById(pool, careRequestId);
-    if (!request || request.patient_user_id !== c.user.id) throw AppError.notFound('Care request');
-    if (!['submitted', 'matching'].includes(request.status))
-      throw AppError.forbidden('Cannot view caregivers for this request');
+    if (careRequestId !== undefined) {
+      const request = await requestsRepo.findById(pool, careRequestId);
+      if (!request || request.patient_user_id !== c.user.id)
+        throw AppError.notFound('Care request');
+      if (!['submitted', 'matching'].includes(request.status))
+        throw AppError.forbidden('Cannot view caregivers for this request');
+    }
   } else {
     await assertOwner(pool, c.user, providerId);
   }
@@ -287,5 +293,102 @@ export async function createCaregiver(
       full_name: body.full_name,
       role: body.role,
     };
+  });
+}
+
+/** Clinic owner lists all fee types for their clinic. */
+export async function listProviderFees(c: Ctx, providerId: number) {
+  await roleAt(pool, c.user, providerId);
+  if (!(await repo.findProvider(pool, providerId))) throw AppError.notFound('Provider');
+  return repo.listProviderFees(pool, providerId);
+}
+
+/** Clinic owner sets or updates a fee type for their clinic (optionally centre-scoped). */
+export async function setProviderFee(
+  c: Ctx,
+  providerId: number,
+  input: z.infer<typeof CreateProviderFeeBody>,
+) {
+  return withTransaction(async (tx) => {
+    await assertOwner(tx, c.user, providerId);
+    await assertVerifiedClinic(tx, providerId);
+    if (input.centre_id) {
+      const centre = await repo.findCentre(tx, input.centre_id);
+      if (!centre || centre.provider_id !== providerId) throw AppError.notFound('Operating centre');
+    }
+    // Upsert: delete any existing fee with same (provider_id, centre_id, fee_type), then insert.
+    await tx.execute(
+      `DELETE FROM provider_fees WHERE provider_id = ? AND centre_id <=> ? AND fee_type = ?`,
+      [providerId, input.centre_id ?? null, input.fee_type],
+    );
+    const id = await repo.insertProviderFee(tx, providerId, {
+      centre_id: input.centre_id ?? null,
+      fee_type: input.fee_type,
+      amount: input.amount,
+      currency: input.currency,
+      is_active: input.is_active,
+    });
+    await audit(tx, {
+      actorUserId: c.user.id,
+      action: 'PROVIDER_FEE_SET',
+      entityType: 'provider_fee',
+      entityId: id,
+      ip: c.ip,
+      metadata: { provider_id: providerId, centre_id: input.centre_id, fee_type: input.fee_type, amount: input.amount },
+    });
+    return repo.findProviderFee(tx, id)!;
+  });
+}
+
+/** Clinic owner updates a fee. */
+export async function updateProviderFee(
+  c: Ctx,
+  providerId: number,
+  feeId: number,
+  input: z.infer<typeof UpdateProviderFeeBody>,
+) {
+  return withTransaction(async (tx) => {
+    await assertOwner(tx, c.user, providerId);
+    const fee = await repo.findProviderFee(tx, providerId, feeId);
+    if (!fee) throw AppError.notFound('Provider fee');
+    if (input.centre_id !== undefined && input.centre_id !== null) {
+      const centre = await repo.findCentre(tx, input.centre_id);
+      if (!centre || centre.provider_id !== providerId) throw AppError.notFound('Operating centre');
+    }
+    await repo.updateProviderFee(tx, providerId, feeId, {
+      centre_id: input.centre_id,
+      fee_type: input.fee_type,
+      amount: input.amount,
+      currency: input.currency,
+      is_active: input.is_active,
+    });
+    await audit(tx, {
+      actorUserId: c.user.id,
+      action: 'PROVIDER_FEE_UPDATED',
+      entityType: 'provider_fee',
+      entityId: feeId,
+      ip: c.ip,
+      metadata: { provider_id, fee_id: feeId },
+    });
+    return repo.findProviderFee(tx, providerId, feeId)!;
+  });
+}
+
+/** Clinic owner deletes a fee. */
+export async function deleteProviderFee(c: Ctx, providerId: number, feeId: number) {
+  return withTransaction(async (tx) => {
+    await assertOwner(tx, c.user, providerId);
+    const fee = await repo.findProviderFee(tx, providerId, feeId);
+    if (!fee) throw AppError.notFound('Provider fee');
+    await repo.deleteProviderFee(tx, providerId, feeId);
+    await audit(tx, {
+      actorUserId: c.user.id,
+      action: 'PROVIDER_FEE_DELETED',
+      entityType: 'provider_fee',
+      entityId: feeId,
+      ip: c.ip,
+      metadata: { provider_id, fee_id: feeId },
+    });
+    return { provider_id: providerId, fee_id: feeId, removed: true };
   });
 }

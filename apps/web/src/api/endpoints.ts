@@ -248,6 +248,37 @@ export const api = {
   // provider fees (customizable priced slots)
   providerFees: (providerId: number) =>
     get<Envelope<ProviderFee[]>>(`/providers/${providerId}/fees`),
+  setProviderFee: (
+    providerId: number,
+    body: {
+      centre_id?: number | null;
+      fee_type: ProviderFee['fee_type'];
+      amount: number;
+      currency?: string;
+      is_active?: boolean;
+    },
+  ) =>
+    post<Envelope<ProviderFee>>(`/providers/${providerId}/fees`, body),
+  updateProviderFee: (
+    providerId: number,
+    feeId: number,
+    body: Partial<{
+      centre_id: number | null;
+      fee_type: ProviderFee['fee_type'];
+      amount: number;
+      currency: string;
+      is_active: boolean;
+    }>,
+  ) =>
+    put<Envelope<ProviderFee>>(
+      `/providers/${providerId}/fees/${feeId}`,
+      body,
+    ),
+  deleteProviderFee: (providerId: number, feeId: number) =>
+    request<Envelope<{ removed: boolean }>>(
+      'DELETE',
+      `/providers/${providerId}/fees/${feeId}`,
+    ),
 
   // patient KYC
   patientKYC: () => get<Envelope<PatientKYC>>('/patient/kyc'),

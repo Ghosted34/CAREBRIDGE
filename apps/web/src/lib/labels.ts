@@ -2,6 +2,7 @@ import type {
   AppointmentStatus,
   AppointmentType,
   EstimateStatus,
+  FeeType,
   PaymentStatus,
   ProviderRole,
   ReferralStatus,
@@ -122,6 +123,15 @@ export const slaCategory: Record<
   unbooked_delay: { label: 'Unbooked (>24h)', tone: 'red' },
   clinical_stalled: { label: 'Stalled (>7d)', tone: 'gold' },
   standard: { label: 'On Track', tone: 'green' },
+};
+
+export const feeType: Record<FeeType, string> = {
+  consultancy: 'Consultation',
+  treatment: 'Treatment',
+  late_change: 'Late change',
+  rescheduling: 'Rescheduling',
+  no_show: 'No-show',
+  other: 'Other',
 };
 
 export const titleCase = (s: string) =>

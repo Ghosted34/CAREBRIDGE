@@ -41,3 +41,22 @@ export const CreateCaregiverBody = z.object({
   role: z.enum(['dentist', 'caregiver', 'hygienist', 'specialist']),
 });
 export type CreateCaregiverBody = z.infer<typeof CreateCaregiverBody>;
+
+/** Clinic owner sets or updates a fee type for their clinic (optionally centre-scoped). */
+export const CreateProviderFeeBody = z.object({
+  centre_id: z.number().int().positive().optional().nullable(),
+  fee_type: z.enum(['consultancy', 'treatment', 'late_change', 'rescheduling', 'no_show', 'other']),
+  amount: z.number().nonnegative().max(10_000_000),
+  currency: z.string().length(3).default('NGN'),
+  is_active: z.boolean().default(true),
+});
+export type CreateProviderFeeBody = z.infer<typeof CreateProviderFeeBody>;
+
+export const UpdateProviderFeeBody = z.object({
+  centre_id: z.number().int().positive().optional().nullable(),
+  fee_type: z.enum(['consultancy', 'treatment', 'late_change', 'rescheduling', 'no_show', 'other']).optional(),
+  amount: z.number().nonnegative().max(10_000_000).optional(),
+  currency: z.string().length(3).optional(),
+  is_active: z.boolean().optional(),
+});
+export type UpdateProviderFeeBody = z.infer<typeof UpdateProviderFeeBody>;

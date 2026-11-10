@@ -235,3 +235,103 @@ export async function searchStaffAccounts(db: Db, term: string, limit: number) {
   );
   return rows;
 }
+
+// ---- provider fees ----
+
+export interface ProviderFeeRow extends Row {
+  id: number;
+  provider_id: number;
+  centre_id: number | null;
+  fee_type: string;
+  amount: number;
+  currency: string;
+  is_active: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function listProviderFees(db: Db, providerId: number) {
+  const [rows] = await db.execute<ProviderFeeRow[]>(
+    `SELECT id, provider_id, centre_id, fee_type, amount, currency, is_active, created_at, updated_at
+       FROM provider_fees
+      WHERE provider_id = ?
+      ORDER BY fee_type ASC, centre_id ASC`,
+    [providerId],
+  );
+  return rows;
+}
+
+export async function findProviderFee(db: Db, providerId: number, feeId: number) {
+  const [rows] = await db.execute<ProviderFeeRow[]>(
+    `SELECT id, provider_id, centre_id, fee_type, amount, currency, is_active, created_at, updated_at
+       FROM provider_fees
+      WHERE id = ? AND provider_id = ?`,
+    [feeId, providerId],
+  );
+  return rows[0] ?? null;
+}
+
+export async function insertProviderFee(
+  db: Db,
+  providerId: number,
+  fee: {
+    centre_id: number | null;
+    fee_type: string;
+    amount: number;
+    currency: string;
+    is_active: boolean;
+  },
+): Promise<number> {
+  const [r] = await db.execute<Result>(
+    `INSERT INTO provider_fees (provider_id, centre_id, fee_type, amount, currency, is_active)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [providerId, fee.centre_id, fee.fee_type, fee.amount, fee.currency, fee.is_active ? 1 : 0],
+  );
+  return r.insertId;
+}
+
+export async function updateProviderFee(
+  db: Db,
+  providerId: number,
+  feeId: number,
+  fee: {
+    centre_id?: number | null;
+    fee_type?: string;
+    amount?: number;
+    currency?: string;
+    is_active?: boolean;
+  },
+): Promise<void> {
+  const sets: string[] = [];
+  const params: unknown[] = [];
+  if (fee.centre_id !== undefined) {
+    sets.push('centre_id = ?');
+    params.push(fee.centre_id);
+  }
+  if (fee.fee_type !== undefined) {
+    sets.push('fee_type = ?');
+    params.push(fee.fee_type);
+  }
+  if (fee.amount !== undefined) {
+    sets.push('amount = ?');
+    params.push(fee.amount);
+  }
+  if (fee.currency !== undefined) {
+    sets.push('currency = ?');
+    params.push(fee.currency);
+  }
+  if (fee.is_active !== undefined) {
+    sets.push('is_active = ?');
+    params.push(fee.is_active ? 1 : 0);
+  }
+  if (sets.length === 0) return;
+  params.push(feeId, providerId);
+  await db.execute(
+    `UPDATE provider_fees SET ${sets.join(', ')} WHERE id = ? AND provider_id = ?`,
+    params,
+  );
+}
+
+export async function deleteProviderFee(db: Db, providerId: number, feeId: number) {
+  await db.execute(`DELETE FROM provider_fees WHERE id = ? AND provider_id = ?`, [feeId, providerId]);
+}

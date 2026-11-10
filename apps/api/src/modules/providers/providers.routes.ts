@@ -9,8 +9,10 @@ import {
   AddTeamMemberBody,
   CreateCaregiverBody,
   CreateCentreBody,
+  CreateProviderFeeBody,
   SearchStaffQuery,
   UpdateCentreBody,
+  UpdateProviderFeeBody,
 } from './providers.schema.js';
 import * as repo from './providers.repo.js';
 import * as service from './providers.service.js';
@@ -168,5 +170,65 @@ providersRouter.post(
         parse(CreateCaregiverBody, req.body),
       ),
     );
+  },
+);
+
+// ---- provider fees: managed by the clinic owner ----
+
+const FeeIdParams = z.object({
+  id: z.coerce.number().int().positive(),
+  feeId: z.coerce.number().int().positive(),
+});
+
+providersRouter.get(
+  '/providers/:id/fees',
+  authenticate,
+  allow('provider_staff', 'operator', 'admin', 'patient'),
+  async (req, res) => {
+    ok(res, await service.listProviderFees(ctx(req), parse(IdParam, req.params).id));
+  },
+);
+
+providersRouter.post(
+  '/providers/:id/fees',
+  authenticate,
+  allow('provider_staff', 'operator', 'admin'),
+  async (req, res) => {
+    ok(
+      res,
+      await service.setProviderFee(
+        ctx(req),
+        parse(IdParam, req.params).id,
+        parse(CreateProviderFeeBody, req.body),
+      ),
+    );
+  },
+);
+
+providersRouter.put(
+  '/providers/:id/fees/:feeId',
+  authenticate,
+  allow('provider_staff', 'operator', 'admin'),
+  async (req, res) => {
+    const { id, feeId } = parse(FeeIdParams, req.params);
+    ok(
+      res,
+      await service.updateProviderFee(
+        ctx(req),
+        id,
+        feeId,
+        parse(UpdateProviderFeeBody, req.body),
+      ),
+    );
+  },
+);
+
+providersRouter.delete(
+  '/providers/:id/fees/:feeId',
+  authenticate,
+  allow('provider_staff', 'operator', 'admin'),
+  async (req, res) => {
+    const { id, feeId } = parse(FeeIdParams, req.params);
+    ok(res, await service.deleteProviderFee(ctx(req), id, feeId));
   },
 );

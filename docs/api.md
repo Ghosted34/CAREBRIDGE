@@ -138,6 +138,10 @@ Before that they return `409 VISIT_REQUIRED` and write nothing. Booking an appoi
 | `PUT /providers/:id/centres/:centreId` | clinic owner, operator, admin | partial centre fields | update an operating centre |
 | `GET /providers/:id/caregivers` | any member, operator, admin | — | caregivers at a clinic's centres |
 | `POST /providers/:id/caregivers` | clinic owner, operator, admin | `centre_id, full_name, role` | add a caregiver to a centre |
+| `GET /providers/:id/fees` | any member, operator, admin, patient | — | fee types & amounts for a clinic (consultancy, treatment, etc.) |
+| `POST /providers/:id/fees` | clinic owner, operator, admin | `centre_id?, fee_type, amount, currency?, is_active?` | set or upsert a fee type, optionally centre-scoped |
+| `PUT /providers/:id/fees/:feeId` | clinic owner, operator, admin | partial fee fields | update an existing fee |
+| `DELETE /providers/:id/fees/:feeId` | clinic owner, operator, admin | — | delete a fee type |
 | `GET /centres/:centreId/slots` | public | `from?, to?, status?` | bookable slots at one centre |
 | `GET /providers/:id/slots` | public | `from?, to?, status?, centre_id?` | bookable appointment slots |
 | `POST /providers/:id/slots` | provider staff, admin | `centre_id, start_time, end_time, price?, currency?` | manual slot creation |

@@ -58,14 +58,24 @@ export async function createSlot(ctx: Ctx, providerId: number, body: CreateSlotB
     if (!centre || centre.provider_id !== providerId) {
       throw AppError.notFound('Operating centre');
     }
+    let slotPrice = body.price;
+    let slotCurrency = body.currency;
+    if (slotPrice === undefined) {
+      const fees = await providersRepo.listProviderFees(tx, providerId);
+      const consultancy = fees.find((f) => f.fee_type === 'consultancy' && f.is_active === 1);
+      if (consultancy) {
+        slotPrice = consultancy.amount;
+        slotCurrency = consultancy.currency;
+      }
+    }
     const id = await repo.insertSlot(
       tx,
       body.centre_id,
       providerId,
       start,
       end,
-      body.price ?? null,
-      body.currency ?? null,
+      slotPrice ?? null,
+      slotCurrency ?? null,
     );
     await audit(tx, {
       actorUserId: ctx.user.id,
@@ -99,6 +109,17 @@ export async function generateSlots(ctx: Ctx, providerId: number, body: Generate
     const schedules = await repo.findSchedulesByProviderAndCentre(tx, providerId, body.centre_id);
     if (!schedules.length) {
       throw AppError.badRequest('This centre has no active schedules configured');
+    }
+    // Default slot price to the provider's consultancy fee when none is supplied.
+    let defaultPrice = body.price;
+    let defaultCurrency = body.currency;
+    if (defaultPrice === undefined) {
+      const fees = await providersRepo.listProviderFees(tx, providerId);
+      const consultancy = fees.find((f) => f.fee_type === 'consultancy' && f.is_active === 1);
+      if (consultancy) {
+        defaultPrice = consultancy.amount;
+        defaultCurrency = consultancy.currency;
+      }
     }
 
     const schedulesByDay = new Map(
@@ -163,8 +184,8 @@ export async function generateSlots(ctx: Ctx, providerId: number, body: Generate
       providerId,
       slotsToCreate.map((s) => ({
         ...s,
-        price: body.price ?? null,
-        currency: body.currency ?? null,
+        price: defaultPrice ?? null,
+        currency: defaultCurrency ?? null,
       })),
     );
     await audit(tx, {
