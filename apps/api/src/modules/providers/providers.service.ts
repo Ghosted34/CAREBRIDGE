@@ -11,8 +11,10 @@ import type {
   AddTeamMemberBody,
   CreateCaregiverBody,
   CreateCentreBody,
+  CreateProviderFeeBody,
   SearchStaffQuery,
   UpdateCentreBody,
+  UpdateProviderFeeBody,
 } from './providers.schema.js';
 import * as repo from './providers.repo.js';
 
@@ -336,7 +338,7 @@ export async function setProviderFee(
       ip: c.ip,
       metadata: { provider_id: providerId, centre_id: input.centre_id, fee_type: input.fee_type, amount: input.amount },
     });
-    return repo.findProviderFee(tx, id)!;
+    return repo.findProviderFee(tx, providerId, id)!;
   });
 }
 
@@ -368,7 +370,7 @@ export async function updateProviderFee(
       entityType: 'provider_fee',
       entityId: feeId,
       ip: c.ip,
-      metadata: { provider_id, fee_id: feeId },
+      metadata: { providerId, feeId },
     });
     return repo.findProviderFee(tx, providerId, feeId)!;
   });
@@ -387,8 +389,8 @@ export async function deleteProviderFee(c: Ctx, providerId: number, feeId: numbe
       entityType: 'provider_fee',
       entityId: feeId,
       ip: c.ip,
-      metadata: { provider_id, fee_id: feeId },
+      metadata: { providerId, feeId },
     });
-    return { provider_id: providerId, fee_id: feeId, removed: true };
+    return { providerId, feeId, removed: true };
   });
 }

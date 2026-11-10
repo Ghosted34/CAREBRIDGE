@@ -303,7 +303,7 @@ export async function updateProviderFee(
   },
 ): Promise<void> {
   const sets: string[] = [];
-  const params: unknown[] = [];
+  const params: (string | number | null)[] = [];
   if (fee.centre_id !== undefined) {
     sets.push('centre_id = ?');
     params.push(fee.centre_id);
