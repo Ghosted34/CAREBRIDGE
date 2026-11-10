@@ -213,12 +213,7 @@ providersRouter.put(
     const { id, feeId } = parse(FeeIdParams, req.params);
     ok(
       res,
-      await service.updateProviderFee(
-        ctx(req),
-        id,
-        feeId,
-        parse(UpdateProviderFeeBody, req.body),
-      ),
+      await service.updateProviderFee(ctx(req), id, feeId, parse(UpdateProviderFeeBody, req.body)),
     );
   },
 );

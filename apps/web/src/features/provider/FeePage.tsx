@@ -104,10 +104,8 @@ export function FeePage() {
   }
 
   const feeList = fees.data?.data ?? [];
-  const fieldErrors =
-    setFee.error instanceof ApiError ? setFee.error.fieldErrors() : {};
-  const updateErrors =
-    updateFee.error instanceof ApiError ? updateFee.error.fieldErrors() : {};
+  const fieldErrors = setFee.error instanceof ApiError ? setFee.error.fieldErrors() : {};
+  const updateErrors = updateFee.error instanceof ApiError ? updateFee.error.fieldErrors() : {};
 
   return (
     <>
@@ -153,11 +151,7 @@ export function FeePage() {
                     </div>
                     {isOwner && (
                       <div className="btn-row" style={{ gap: 6 }}>
-                        <Button
-                          variant="ghost"
-                          className="btn-sm"
-                          onClick={() => editFee(f)}
-                        >
+                        <Button variant="ghost" className="btn-sm" onClick={() => editFee(f)}>
                           Edit
                         </Button>
                         <Button
@@ -165,11 +159,7 @@ export function FeePage() {
                           className="btn-sm"
                           busy={deleteFee.isPending && deleteFee.variables === f.id}
                           onClick={() => {
-                            if (
-                              window.confirm(
-                                `Delete ${feeType[f.fee_type]} fee?`,
-                              )
-                            ) {
+                            if (window.confirm(`Delete ${feeType[f.fee_type]} fee?`)) {
                               deleteFee.mutate(f.id);
                             }
                           }}
@@ -219,9 +209,7 @@ export function FeePage() {
                 <Field label="Centre (optional)">
                   <select
                     value={formCentreId === '' ? '' : String(formCentreId)}
-                    onChange={(e) =>
-                      setFormCentreId(e.target.value ? Number(e.target.value) : '')
-                    }
+                    onChange={(e) => setFormCentreId(e.target.value ? Number(e.target.value) : '')}
                   >
                     <option value="">All centres</option>
                   </select>

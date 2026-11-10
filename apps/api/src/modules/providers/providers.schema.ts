@@ -54,7 +54,9 @@ export type CreateProviderFeeBody = z.infer<typeof CreateProviderFeeBody>;
 
 export const UpdateProviderFeeBody = z.object({
   centre_id: z.number().int().positive().optional().nullable(),
-  fee_type: z.enum(['consultancy', 'treatment', 'late_change', 'rescheduling', 'no_show', 'other']).optional(),
+  fee_type: z
+    .enum(['consultancy', 'treatment', 'late_change', 'rescheduling', 'no_show', 'other'])
+    .optional(),
   amount: z.number().nonnegative().max(10_000_000).optional(),
   currency: z.string().length(3).optional(),
   is_active: z.boolean().optional(),

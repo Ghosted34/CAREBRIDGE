@@ -24,7 +24,10 @@ async function autoMigrate() {
     });
     const applied = await migrator.up();
     if (applied.length) {
-      logger.info({ count: applied.length, versions: applied }, 'auto-migrate applied pending migrations');
+      logger.info(
+        { count: applied.length, versions: applied },
+        'auto-migrate applied pending migrations',
+      );
     } else {
       logger.info('auto-migrate: database already up to date');
     }

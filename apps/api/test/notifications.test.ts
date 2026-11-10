@@ -121,8 +121,8 @@ describe('events create notifications', () => {
     const secret = 'Severe pain lower left molar, possible abscess';
     const patient = await makeUser('patient');
     const providerId = await makeProvider();
-    const staff = await makeStaff(providerId);
-    const r = await api
+    const _staff = await makeStaff(providerId);
+    const _r = await api
       .post('/api/v1/requests')
       .set(patient.auth)
       .send(requestBody({ description: secret, service_type: 'Root canal assessment' }));

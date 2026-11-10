@@ -126,7 +126,9 @@ export function BookingForm({
   const { data: caregivers } = useQuery({
     queryKey: ['caregivers', selectedProvider?.provider_id],
     queryFn: () =>
-      selectedProvider ? api.caregivers(selectedProvider.provider_id) : Promise.resolve({ data: [] }),
+      selectedProvider
+        ? api.caregivers(selectedProvider.provider_id)
+        : Promise.resolve({ data: [] }),
     enabled: Boolean(selectedProvider),
   });
 

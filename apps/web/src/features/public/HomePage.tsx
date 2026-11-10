@@ -63,8 +63,8 @@ export function HomePage() {
         </div>
       </div>
       <div className="notice notice-warn" style={{ marginTop: 24 }}>
-        <strong>Emergency?</strong> CareLynk is not an emergency service. Call{' '}
-        <strong>112</strong> or go to the nearest emergency department.
+        <strong>Emergency?</strong> CareLynk is not an emergency service. Call <strong>112</strong>{' '}
+        or go to the nearest emergency department.
       </div>
     </>
   );

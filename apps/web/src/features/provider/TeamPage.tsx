@@ -101,8 +101,8 @@ export function TeamPage() {
       />
       {clinic.verification_status !== 'verified' ? (
         <Notice tone="warn">
-          Your facility is awaiting CareLynk verification. Team management unlocks as soon as it
-          is verified.
+          Your facility is awaiting CareLynk verification. Team management unlocks as soon as it is
+          verified.
         </Notice>
       ) : (
         <div className="grid grid-2" style={{ alignItems: 'start' }}>

@@ -336,7 +336,12 @@ export async function setProviderFee(
       entityType: 'provider_fee',
       entityId: id,
       ip: c.ip,
-      metadata: { provider_id: providerId, centre_id: input.centre_id, fee_type: input.fee_type, amount: input.amount },
+      metadata: {
+        provider_id: providerId,
+        centre_id: input.centre_id,
+        fee_type: input.fee_type,
+        amount: input.amount,
+      },
     });
     return repo.findProviderFee(tx, providerId, id)!;
   });

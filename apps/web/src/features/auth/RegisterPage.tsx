@@ -113,8 +113,8 @@ export function RegisterPage() {
           <h1>Thanks — we’ll be in touch</h1>
           <Notice tone="success">
             Your account and facility details have been submitted and are{' '}
-            <strong>awaiting verification</strong>. CareLynk checks your registration, then you
-            can sign in and manage your clinic team yourself.
+            <strong>awaiting verification</strong>. CareLynk checks your registration, then you can
+            sign in and manage your clinic team yourself.
           </Notice>
           <p style={{ marginTop: 14 }}>
             <Link to="/">Back to home</Link>

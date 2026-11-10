@@ -333,5 +333,8 @@ export async function updateProviderFee(
 }
 
 export async function deleteProviderFee(db: Db, providerId: number, feeId: number) {
-  await db.execute(`DELETE FROM provider_fees WHERE id = ? AND provider_id = ?`, [feeId, providerId]);
+  await db.execute(`DELETE FROM provider_fees WHERE id = ? AND provider_id = ?`, [
+    feeId,
+    providerId,
+  ]);
 }

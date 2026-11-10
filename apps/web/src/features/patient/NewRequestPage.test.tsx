@@ -66,7 +66,20 @@ describe('NewRequestPage', () => {
   });
 
   it('transitions to clinic matching without creating a request', async () => {
-    const fetchFn = mockApi(directoryMatches([{ id: 7, display_name: 'Ikeja Dental', city: 'Lagos', address: '10 Allen Ave', provider_type: 'clinic', specialties: ['dentistry'], services: null, accepting_referrals: true }]));
+    const fetchFn = mockApi(
+      directoryMatches([
+        {
+          id: 7,
+          display_name: 'Ikeja Dental',
+          city: 'Lagos',
+          address: '10 Allen Ave',
+          provider_type: 'clinic',
+          specialties: ['dentistry'],
+          services: null,
+          accepting_referrals: true,
+        },
+      ]),
+    );
     renderApp(<NewRequestPage />, { route: '/patient/new', auth: { user: patientUser } });
     await fillAndSend();
     // Transitions to provider step; no care request is created yet.
@@ -76,10 +89,30 @@ describe('NewRequestPage', () => {
   });
 
   it('lists providers from the directory search', async () => {
-    const fetchFn = mockApi(directoryMatches([
-      { id: 7, display_name: 'Ikeja Dental', city: 'Lagos', address: '10 Allen Ave', provider_type: 'clinic', specialties: ['dentistry'], services: null, accepting_referrals: true },
-      { id: 9, display_name: 'Lekja Smiles', city: 'Lagos', address: '2 Queen Drive', provider_type: 'clinic', specialties: ['dentistry', 'orthodontics'], services: null, accepting_referrals: true },
-    ]));
+    const fetchFn = mockApi(
+      directoryMatches([
+        {
+          id: 7,
+          display_name: 'Ikeja Dental',
+          city: 'Lagos',
+          address: '10 Allen Ave',
+          provider_type: 'clinic',
+          specialties: ['dentistry'],
+          services: null,
+          accepting_referrals: true,
+        },
+        {
+          id: 9,
+          display_name: 'Lekja Smiles',
+          city: 'Lagos',
+          address: '2 Queen Drive',
+          provider_type: 'clinic',
+          specialties: ['dentistry', 'orthodontics'],
+          services: null,
+          accepting_referrals: true,
+        },
+      ]),
+    );
     renderApp(<NewRequestPage />, { route: '/patient/new', auth: { user: patientUser } });
     await fillAndSend();
     await screen.findByText('← Change problem or date');

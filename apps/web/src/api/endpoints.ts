@@ -257,8 +257,7 @@ export const api = {
       currency?: string;
       is_active?: boolean;
     },
-  ) =>
-    post<Envelope<ProviderFee>>(`/providers/${providerId}/fees`, body),
+  ) => post<Envelope<ProviderFee>>(`/providers/${providerId}/fees`, body),
   updateProviderFee: (
     providerId: number,
     feeId: number,
@@ -269,16 +268,9 @@ export const api = {
       currency: string;
       is_active: boolean;
     }>,
-  ) =>
-    put<Envelope<ProviderFee>>(
-      `/providers/${providerId}/fees/${feeId}`,
-      body,
-    ),
+  ) => put<Envelope<ProviderFee>>(`/providers/${providerId}/fees/${feeId}`, body),
   deleteProviderFee: (providerId: number, feeId: number) =>
-    request<Envelope<{ removed: boolean }>>(
-      'DELETE',
-      `/providers/${providerId}/fees/${feeId}`,
-    ),
+    request<Envelope<{ removed: boolean }>>('DELETE', `/providers/${providerId}/fees/${feeId}`),
 
   // patient KYC
   patientKYC: () => get<Envelope<PatientKYC>>('/patient/kyc'),

@@ -65,12 +65,7 @@ export function createApp() {
   // Serve the built web app (single deployment: web + api together).
   // Static assets are served from dist/public; all other non-API routes fall
   // through to index.html so React Router client-side routing works.
-  const publicDir = path.join(
-    path.dirname(fileURLToPath(import.meta.url)),
-    '..',
-    'dist',
-    'public',
-  );
+  const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist', 'public');
   app.use(express.static(publicDir));
   app.get('*', (_req, res) => {
     res.sendFile(path.join(publicDir, 'index.html'));
