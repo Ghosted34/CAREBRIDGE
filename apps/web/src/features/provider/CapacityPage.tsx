@@ -30,6 +30,13 @@ export function CapacityPage() {
 
   const activeId = clinicId;
   const [selectedCentreId, setSelectedCentreId] = useState<number | null>(null);
+  const [addCentreOpen, setAddCentreOpen] = useState(false);
+  const [centreName, setCentreName] = useState('');
+  const [centreAddress, setCentreAddress] = useState('');
+  const [centreCity, setCentreCity] = useState('');
+  const [centreState, setCentreState] = useState('');
+  const [centrePostalCode, setCentrePostalCode] = useState('');
+  const [centrePhone, setCentrePhone] = useState('');
 
   const { data: centresData } = useQuery({
     queryKey: ['centres', activeId],
@@ -71,6 +78,28 @@ export function CapacityPage() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['schedules', activeId] });
       setEditOpen(false);
+    },
+  });
+
+  const createCentre = useMutation({
+    mutationFn: () =>
+      api.createCentre(activeId!, {
+        name: centreName,
+        address_line: centreAddress,
+        city: centreCity,
+        state: centreState,
+        postal_code: centrePostalCode,
+        phone: centrePhone || undefined,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['centres', activeId] });
+      setAddCentreOpen(false);
+      setCentreName('');
+      setCentreAddress('');
+      setCentreCity('');
+      setCentreState('');
+      setCentrePostalCode('');
+      setCentrePhone('');
     },
   });
 
@@ -140,6 +169,9 @@ export function CapacityPage() {
                 ))}
               </select>
             </Field>
+          ) : null}
+          {centres.length > 0 ? (
+            <Button onClick={() => setAddCentreOpen(true)}>Add centre</Button>
           ) : null}
           <Button onClick={() => setEditOpen(true)} disabled={!selectedCentreId}>
             Edit hours
@@ -380,6 +412,83 @@ export function CapacityPage() {
             </Button>
             <Button type="submit" busy={setSchedules.isPending}>
               Save hours
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal
+        open={addCentreOpen}
+        title="Add operating centre"
+        onClose={() => setAddCentreOpen(false)}
+      >
+        <form
+          className="form"
+          onSubmit={(e: FormEvent) => {
+            e.preventDefault();
+            createCentre.mutate();
+          }}
+        >
+          <p className="hint">
+            Add a new operating centre for this clinic. Each centre can have its own hours and
+            bookable slots.
+          </p>
+          <div className="form-grid">
+            <Field label="Centre name">
+              <input
+                type="text"
+                required
+                value={centreName}
+                onChange={(e) => setCentreName(e.target.value)}
+              />
+            </Field>
+            <Field label="Address line">
+              <input
+                type="text"
+                required
+                value={centreAddress}
+                onChange={(e) => setCentreAddress(e.target.value)}
+              />
+            </Field>
+            <Field label="City">
+              <input
+                type="text"
+                required
+                value={centreCity}
+                onChange={(e) => setCentreCity(e.target.value)}
+              />
+            </Field>
+            <Field label="State">
+              <input
+                type="text"
+                required
+                value={centreState}
+                onChange={(e) => setCentreState(e.target.value)}
+              />
+            </Field>
+            <Field label="Postal code">
+              <input
+                type="text"
+                required
+                value={centrePostalCode}
+                onChange={(e) => setCentrePostalCode(e.target.value)}
+              />
+            </Field>
+            <Field label="Phone (optional)">
+              <input
+                type="tel"
+                value={centrePhone}
+                onChange={(e) => setCentrePhone(e.target.value)}
+              />
+            </Field>
+          </div>
+          <ErrorNote error={createCentre.error} />
+          <div className="btn-row">
+            <Button variant="ghost" onClick={() => setAddCentreOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" busy={createCentre.isPending}>
+              Add centre
             </Button>
           </div>
         </form>

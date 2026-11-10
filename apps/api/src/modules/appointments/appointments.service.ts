@@ -77,6 +77,9 @@ export async function book(c: Ctx, input: z.infer<typeof BookAppointmentBody>) {
       status: 'requested',
       created_by_user_id: c.user.id,
     });
+    // Link the care request to the chosen provider so it appears in the provider's queue.
+    // Patients pick the provider directly (no offer round), so the request is assigned here.
+    await requestsRepo.setStatus(tx, request.id, request.status, providerId);
     if (input.slot_id) {
       await slotsRepo.updateSlotStatus(tx, input.slot_id, 'held', id);
     }
