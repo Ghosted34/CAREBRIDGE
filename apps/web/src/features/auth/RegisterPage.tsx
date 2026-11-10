@@ -20,37 +20,72 @@ export function RegisterPage() {
     accept_privacy: false,
     marketing_opt_in: false,
   });
+  // Patient KYC: structured address (single changeable address used for provider matching),
+  // DOB, gender, ID number, emergency contact.
+  const [kyc, setKyc] = useState({
+    address_street: '',
+    address_city: '',
+    address_state: '',
+    address_postal: '',
+    date_of_birth: '',
+    gender: 'male' as 'male' | 'female' | 'other' | 'prefer_not_to_say',
+    id_number: '',
+    emergency_contact_name: '',
+    emergency_contact_phone: '',
+  });
   // Filled in only by clinic / provider staff: the facility is created `pending` and this person
   // becomes its owner, so they can manage their own team once CareBridge verifies it.
   const [clinic, setClinic] = useState({
     legal_name: '',
     display_name: '',
     registration_number: '',
+    cac_number: '',
+    tax_id: '',
     address: '',
     specialties: 'dentistry',
   });
   const isClinic = form.role === 'provider_staff';
+  const isPatient = form.role === 'patient';
   const check =
     (k: 'accept_terms' | 'accept_privacy' | 'marketing_opt_in') =>
     (e: { target: { checked: boolean } }) =>
-      setForm((f) => ({ ...f, [k]: e.target.checked }));
+      setForm((f) => ({ ...f, [k]: e.target.checked })) as void;
   const set =
-    (k: 'full_name' | 'email' | 'phone' | 'password') => (e: { target: { value: string } }) =>
+    (k: 'full_name' | 'email' | 'phone' | 'password') => (e: { target: { value: string } }) => {
       setForm((f) => ({
         ...f,
         [k]: k === 'email' || k === 'phone' ? cleanIdentifier(e.target.value) : e.target.value,
       }));
+    };
+  const setKycField = (k: keyof typeof kyc) => (e: { target: { value: string } }) => {
+    setKyc((f) => ({ ...f, [k]: e.target.value }));
+  };
 
   const register = useMutation({
     mutationFn: async () => {
       const r = await api.register({
         ...form,
+        kyc: isPatient
+          ? {
+              address_street: kyc.address_street,
+              address_city: kyc.address_city,
+              address_state: kyc.address_state,
+              address_postal: kyc.address_postal,
+              date_of_birth: kyc.date_of_birth,
+              gender: kyc.gender,
+              id_number: kyc.id_number,
+              emergency_contact_name: kyc.emergency_contact_name,
+              emergency_contact_phone: kyc.emergency_contact_phone,
+            }
+          : undefined,
         clinic: isClinic
           ? {
               legal_name: clinic.legal_name,
               display_name: clinic.display_name,
               provider_type: 'clinic',
               registration_number: clinic.registration_number,
+              cac_number: clinic.cac_number,
+              tax_id: clinic.tax_id,
               city: 'Lagos',
               address: clinic.address,
               // Comma separated in the field, snake_case array for the API (e.g. "Oral surgery").
@@ -157,6 +192,108 @@ export function RegisterPage() {
               onValueChange={(password) => setForm((f) => ({ ...f, password }))}
             />
           </Field>
+
+          {isPatient && (
+            <fieldset className="consent-box">
+              <legend className="legend">Your details</legend>
+              <p className="small muted">
+                Your address is used to match you with nearby clinics. You can change it later.
+              </p>
+              <div className="form-grid">
+                <Field label="Street address" error={fe('kyc')} className="span-2">
+                  <input
+                    required
+                    autoComplete="address-line1"
+                    placeholder="e.g. 14 Adewale Olateju Street"
+                    value={kyc.address_street}
+                    onChange={setKycField('address_street')}
+                  />
+                </Field>
+                <Field label="City" error={fe('kyc')}>
+                  <input
+                    required
+                    autoComplete="address-level2"
+                    placeholder="e.g. Ikeja"
+                    value={kyc.address_city}
+                    onChange={setKycField('address_city')}
+                  />
+                </Field>
+                <Field label="State" error={fe('kyc')}>
+                  <input
+                    required
+                    autoComplete="address-level1"
+                    placeholder="e.g. Lagos"
+                    value={kyc.address_state}
+                    onChange={setKycField('address_state')}
+                  />
+                </Field>
+                <Field label="Postal code" error={fe('kyc')}>
+                  <input
+                    required
+                    autoComplete="postal-code"
+                    placeholder="e.g. 100212"
+                    value={kyc.address_postal}
+                    onChange={setKycField('address_postal')}
+                  />
+                </Field>
+                <Field label="Date of birth" error={fe('kyc')}>
+                  <input
+                    required
+                    type="date"
+                    max={new Date().toISOString().slice(0, 10)}
+                    value={kyc.date_of_birth}
+                    onChange={setKycField('date_of_birth')}
+                  />
+                </Field>
+                <Field label="Gender" error={fe('kyc')}>
+                  <select required value={kyc.gender} onChange={setKycField('gender')}>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                    <option value="other">Other</option>
+                    <option value="prefer_not_to_say">Prefer not to say</option>
+                  </select>
+                </Field>
+                <Field
+                  label="ID number"
+                  error={fe('kyc')}
+                  hint="NIN, voter's card or driver's licence"
+                >
+                  <input
+                    required
+                    autoComplete="id"
+                    placeholder="e.g. Lagos-12345678"
+                    value={kyc.id_number}
+                    onChange={setKycField('id_number')}
+                  />
+                </Field>
+                <Field label="Emergency contact name" error={fe('kyc')} className="span-2">
+                  <input
+                    required
+                    autoComplete="name"
+                    placeholder="e.g. Emeka Patient"
+                    value={kyc.emergency_contact_name}
+                    onChange={setKycField('emergency_contact_name')}
+                  />
+                </Field>
+                <Field
+                  label="Emergency contact phone"
+                  error={fe('kyc')}
+                  hint="e.g. +234 800 000 0099"
+                  className="span-2"
+                >
+                  <input
+                    required
+                    type="tel"
+                    autoComplete="tel"
+                    placeholder="+234 800 000 0099"
+                    value={kyc.emergency_contact_phone}
+                    onChange={setKycField('emergency_contact_phone')}
+                  />
+                </Field>
+              </div>
+            </fieldset>
+          )}
+
           {isClinic && (
             <fieldset className="consent-box">
               <legend className="legend">Your facility</legend>
@@ -197,6 +334,26 @@ export function RegisterPage() {
                     }
                   />
                 </Field>
+                <Field
+                  label="CAC number"
+                  hint="Corporate Affairs Commission registration"
+                  className="span-2"
+                >
+                  <input
+                    required
+                    placeholder="e.g. RC-123456"
+                    value={clinic.cac_number}
+                    onChange={(e) => setClinic((c) => ({ ...c, cac_number: e.target.value }))}
+                  />
+                </Field>
+                <Field label="Tax ID" hint="Taxpayer Identification Number" className="span-2">
+                  <input
+                    required
+                    placeholder="e.g. TIN-12345678-001"
+                    value={clinic.tax_id}
+                    onChange={(e) => setClinic((c) => ({ ...c, tax_id: e.target.value }))}
+                  />
+                </Field>
                 <Field label="Address" className="span-2">
                   <input
                     required
@@ -219,6 +376,7 @@ export function RegisterPage() {
               </div>
             </fieldset>
           )}
+
           <fieldset className="consents">
             <legend className="legend">Agreements</legend>
             <label className="check">

@@ -5,6 +5,7 @@ import helmet from 'helmet';
 import { env } from './config/env.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { adminRouter } from './modules/admin/admin.routes.js';
+import { appointmentNotesRouter } from './modules/appointment_notes/appointment_notes.routes.js';
 import { appointmentsRouter } from './modules/appointments/appointments.routes.js';
 import { authRouter } from './modules/auth/auth.routes.js';
 import { consentsRouter } from './modules/consents/consents.routes.js';
@@ -43,6 +44,7 @@ export function createApp() {
   const v1 = Router();
   v1.use(
     authRouter,
+    appointmentNotesRouter,
     consentsRouter,
     notificationsRouter,
     providersRouter,

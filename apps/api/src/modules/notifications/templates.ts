@@ -86,6 +86,28 @@ export const TEMPLATES = {
     body: (p) => `Request #${p.request_id} was cancelled by the patient.`,
     link: () => '/provider/patients',
   },
+  appointment_requested_provider: {
+    channels: ['in_app', 'email'],
+    title: () => 'New appointment request',
+    body: (p) =>
+      `A patient has requested an appointment on ${when(p.starts_at)} at ${p.provider} (request #${p.request_id}). Please confirm or decline.`,
+    link: () => '/provider/appointments',
+  },
+  appointment_note_added: {
+    channels: ['in_app'],
+    title: () => 'New note on your visit',
+    body: (p) => `Your provider has added a note to your appointment #${p.appointment_id}.`,
+    link: () => '/patient/appointments',
+  },
+  appointment_declined_patient: {
+    channels: ['in_app', 'sms'],
+    title: () => 'Appointment request declined',
+    body: (p) =>
+      `${p.provider} was unable to accept your appointment request on ${when(p.starts_at)}. You can choose another time or provider.`,
+    sms: (p) =>
+      `CareBridge: ${p.provider} could not accept your appointment request on ${when(p.starts_at)}. Open the app to choose another time.`,
+    link: (p) => `/patient/requests/${p.request_id}`,
+  },
   appointment_booked_patient: {
     channels: ['in_app', 'sms'],
     title: () => 'Appointment booked',

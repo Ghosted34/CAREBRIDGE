@@ -12,12 +12,6 @@ import * as slotsRepo from '../slots/slots.repo.js';
 import type { BookAppointmentBody } from './appointments.schema.js';
 import * as repo from './appointments.repo.js';
 
-const BOOKABLE_REQUEST_STATUSES = [
-  'provider_accepted',
-  'assessment',
-  'treatment_planned',
-  'in_progress',
-];
 const MAX_DURATION_MS = 8 * 60 * 60 * 1000;
 
 /**
@@ -35,9 +29,10 @@ export async function assertVisitHappened(db: Db, careRequestId: number): Promis
 }
 
 /**
- * Book with the provider assigned to the request. Bookings for one provider are
- * serialised by locking the provider row, so two concurrent bookings cannot both
- * pass the overlap check.
+ * Patient sends a booking request directly to a provider (no offer/bidding round).
+ * The appointment is created as `requested` and the chosen slot is `held` until the
+ * provider confirms or declines. Bookings for one provider are serialised by locking
+ * the provider row, so two concurrent requests cannot both pass the overlap check.
  */
 export async function book(c: Ctx, input: z.infer<typeof BookAppointmentBody>) {
   // DATETIME columns round fractional seconds, so truncate first: what we compare is what we store.
@@ -49,18 +44,14 @@ export async function book(c: Ctx, input: z.infer<typeof BookAppointmentBody>) {
     throw AppError.badRequest('Appointments cannot exceed 8 hours');
   if (start.getTime() <= Date.now()) throw AppError.badRequest('starts_at must be in the future');
 
+  const providerId: number = input.provider_id;
+
   return withTransaction(async (tx) => {
     const request = await requestsRepo.findById(tx, input.care_request_id, { forUpdate: true });
     if (!request) throw AppError.notFound('Care request');
     if (c.user.role === 'patient' && request.patient_user_id !== c.user.id)
       throw AppError.notFound('Care request');
-    if (!request.assigned_provider_id || !BOOKABLE_REQUEST_STATUSES.includes(request.status)) {
-      throw AppError.conflict(
-        'REQUEST_NOT_BOOKABLE',
-        'A provider must accept this request before booking',
-      );
-    }
-    const providerId: number = request.assigned_provider_id;
+    // Staff booking on behalf of a patient must belong to the provider they're booking with.
     if (c.user.role !== 'patient') await assertCanActForProvider(tx, c.user, providerId);
 
     // Serialise bookings per provider.
@@ -78,46 +69,46 @@ export async function book(c: Ctx, input: z.infer<typeof BookAppointmentBody>) {
       care_request_id: request.id,
       patient_user_id: request.patient_user_id,
       provider_id: providerId,
+      centre_id: input.centre_id ?? null,
       appointment_type: input.appointment_type,
+      appointment_mode: input.appointment_mode,
       starts_at: start,
       ends_at: end,
+      status: 'requested',
       created_by_user_id: c.user.id,
     });
     if (input.slot_id) {
-      await slotsRepo.updateSlotStatus(tx, input.slot_id, 'booked', id);
+      await slotsRepo.updateSlotStatus(tx, input.slot_id, 'held', id);
     }
     await audit(tx, {
       actorUserId: c.user.id,
-      action: 'APPOINTMENT_BOOKED',
+      action: 'APPOINTMENT_REQUESTED',
       entityType: 'appointment',
       entityId: id,
       ip: c.ip,
-      metadata: { care_request_id: request.id, provider_id: providerId },
+      metadata: {
+        care_request_id: request.id,
+        provider_id: providerId,
+        centre_id: input.centre_id,
+        appointment_mode: input.appointment_mode,
+      },
     });
-    // Tell the other side: the clinic when the patient booked, the patient when staff booked.
+    // Tell the clinic a patient has requested an appointment — they confirm or decline.
     const notice = {
       request_id: request.id,
       appointment_id: id,
       provider: await notifications.providerName(tx, providerId),
       starts_at: start.toISOString(),
     };
-    if (c.user.role === 'patient') {
-      const staff = await notifications.providerStaffIds(tx, providerId, [
-        'owner',
-        'clinician',
-        'scheduler',
-        'receptionist',
-      ]);
-      await notifications.notify(tx, staff, 'appointment_booked_provider', notice);
-    } else {
-      await notifications.notify(
-        tx,
-        [request.patient_user_id],
-        'appointment_booked_patient',
-        notice,
-      );
-    }
-    return { id, provider_id: providerId, status: 'booked' };
+    const staff = await notifications.providerStaffIds(tx, providerId, [
+      'owner',
+      'clinician',
+      'scheduler',
+      'receptionist',
+    ]);
+    await notifications.notify(tx, staff, 'appointment_requested_provider', notice);
+
+    return { id, provider_id: providerId, status: 'requested' };
   });
 }
 
@@ -133,9 +124,26 @@ export async function listMine(c: Ctx, page: Pagination, providerId?: number) {
   return repo.list(pool, { ...page, providerIds: mine });
 }
 
-type ApptStatus = 'confirmed' | 'cancelled' | 'checked_in' | 'completed' | 'no_show';
+type ApptStatus =
+  'requested' | 'booked' | 'confirmed' | 'cancelled' | 'checked_in' | 'completed' | 'no_show';
 
-async function changeStatus(c: Ctx, id: number, to: ApptStatus, action: string) {
+/**
+ * Slot status to move to when an appointment transitions, keyed by (from, to).
+ */
+function slotStatusFor(from: ApptStatus, to: ApptStatus): 'held' | 'booked' | 'available' | null {
+  if (from === 'requested' && to === 'confirmed') return 'booked';
+  if (from === 'requested' && to === 'cancelled') return 'available';
+  if (from === 'confirmed' && to === 'cancelled') return 'available';
+  if (from === 'booked' && to === 'cancelled') return 'available';
+  return null;
+}
+
+async function changeStatus(
+  c: Ctx,
+  id: number,
+  to: ApptStatus,
+  action: string,
+): Promise<{ id: number; status: ApptStatus }> {
   return withTransaction(async (tx) => {
     const appt = await repo.findById(tx, id, { forUpdate: true });
     if (!appt) throw AppError.notFound('Appointment');
@@ -145,8 +153,18 @@ async function changeStatus(c: Ctx, id: number, to: ApptStatus, action: string) 
       if (c.user.role === 'patient') throw AppError.notFound('Appointment');
       await assertCanActForProvider(tx, c.user, appt.provider_id);
     }
-    assertTransition('appointment', appt.status, to);
+    assertTransition('appointment', appt.status as string, to);
     await repo.setStatus(tx, id, to);
+
+    // Keep the slot in step with the appointment.
+    const slot = await slotsRepo.findSlotByAppointment(tx, id);
+    if (slot) {
+      const nextSlot = slotStatusFor(appt.status as ApptStatus, to);
+      if (nextSlot) {
+        await slotsRepo.updateSlotStatus(tx, slot.id, nextSlot, to === 'cancelled' ? null : id);
+      }
+    }
+
     await audit(tx, {
       actorUserId: c.user.id,
       action,
@@ -166,6 +184,13 @@ async function changeStatus(c: Ctx, id: number, to: ApptStatus, action: string) 
       if (isOwnPatient) {
         const staff = await notifications.providerStaffIds(tx, appt.provider_id);
         await notifications.notify(tx, staff, 'appointment_cancelled_provider', notice);
+      } else if (action === 'APPOINTMENT_DECLINED') {
+        await notifications.notify(
+          tx,
+          [appt.patient_user_id],
+          'appointment_declined_patient',
+          notice,
+        );
       } else {
         await notifications.notify(
           tx,
@@ -181,10 +206,11 @@ async function changeStatus(c: Ctx, id: number, to: ApptStatus, action: string) 
 
 /** Provider-side status actions, keyed by URL verb. */
 export const PROVIDER_ACTIONS = {
-  confirm: { to: 'confirmed', action: 'APPOINTMENT_CONFIRMED' },
-  'check-in': { to: 'checked_in', action: 'APPOINTMENT_CHECKED_IN' },
-  complete: { to: 'completed', action: 'APPOINTMENT_COMPLETED' },
-  'no-show': { to: 'no_show', action: 'APPOINTMENT_NO_SHOW' },
+  confirm: { to: 'confirmed' as const, action: 'APPOINTMENT_CONFIRMED' },
+  decline: { to: 'cancelled' as const, action: 'APPOINTMENT_DECLINED' },
+  'check-in': { to: 'checked_in' as const, action: 'APPOINTMENT_CHECKED_IN' },
+  complete: { to: 'completed' as const, action: 'APPOINTMENT_COMPLETED' },
+  'no-show': { to: 'no_show' as const, action: 'APPOINTMENT_NO_SHOW' },
 } as const;
 export type ProviderAction = keyof typeof PROVIDER_ACTIONS;
 
@@ -192,3 +218,56 @@ export const providerAction = (c: Ctx, id: number, verb: ProviderAction) =>
   changeStatus(c, id, PROVIDER_ACTIONS[verb].to, PROVIDER_ACTIONS[verb].action);
 export const cancel = (c: Ctx, id: number) =>
   changeStatus(c, id, 'cancelled', 'APPOINTMENT_CANCELLED');
+
+/**
+ * Patient (or staff acting for the patient) picks a different provider for a
+ * `requested` appointment before the clinic confirms.
+ */
+export async function updateRequestProvider(
+  c: Ctx,
+  id: number,
+  providerId: number,
+  centreId: number | null,
+) {
+  return withTransaction(async (tx) => {
+    const appt = await repo.findById(tx, id, { forUpdate: true });
+    if (!appt) throw AppError.notFound('Appointment');
+    if (appt.status !== 'requested') {
+      throw AppError.conflict(
+        'INVALID_TRANSITION',
+        'Only a requested appointment can be reassigned to another provider',
+      );
+    }
+    if (c.user.role === 'patient' && appt.patient_user_id !== c.user.id)
+      throw AppError.notFound('Appointment');
+    if (c.user.role !== 'patient') await assertCanActForProvider(tx, c.user, appt.provider_id);
+
+    const affected = await repo.updateRequestProvider(tx, id, providerId, centreId);
+    if (affected === 0) throw AppError.notFound('Appointment');
+
+    await audit(tx, {
+      actorUserId: c.user.id,
+      action: 'APPOINTMENT_PROVIDER_CHANGED',
+      entityType: 'appointment',
+      entityId: id,
+      ip: c.ip,
+      metadata: { provider_id: providerId, centre_id: centreId },
+    });
+
+    const notice = {
+      request_id: appt.care_request_id as number,
+      appointment_id: id,
+      provider: await notifications.providerName(tx, providerId),
+      starts_at: new Date(appt.starts_at).toISOString(),
+    };
+    const staff = await notifications.providerStaffIds(tx, providerId, [
+      'owner',
+      'clinician',
+      'scheduler',
+      'receptionist',
+    ]);
+    await notifications.notify(tx, staff, 'appointment_requested_provider', notice);
+
+    return { id, provider_id: providerId, status: 'requested' };
+  });
+}

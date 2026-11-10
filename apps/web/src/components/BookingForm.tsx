@@ -1,139 +1,381 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState, type FormEvent } from 'react';
+import { useState as useReactState, type FormEvent } from 'react';
+import { useNavigate } from 'react-router';
 import { api } from '../api/endpoints';
-import type { AppointmentType } from '../api/types';
-import { appointmentType } from '../lib/labels';
-import {
-  addMinutes,
-  defaultSlot,
-  formatDateTime,
-  lagosLocalToIso,
-  toLagosLocal,
-} from '../lib/time';
-import { Button, ErrorNote, Field } from './ui';
+import type { Centre, MatchingProvider, ProviderSlot } from '../api/types';
+import { toLagosLocal } from '../lib/time';
+import { Button, Card, EmptyState, ErrorNote, Field, PageHeader, Spinner } from './ui';
 
-const DURATIONS = [30, 45, 60, 90, 120];
+const PROBLEMS = [
+  'Toothache / pain',
+  'Root canal assessment',
+  'Cleaning and check-up',
+  'Broken or chipped tooth',
+  'Gum problems',
+  'Braces / orthodontic consultation',
+  'Tooth extraction',
+  'Other',
+];
 
-/** Book an appointment with the provider already assigned to a care request. Times are Lagos time. */
+type Step = 'problem' | 'provider' | 'centre' | 'slot' | 'confirm';
+
+/**
+ * Simplified booking form: patient submits 2 inputs (problem + date), then picks a provider,
+ * centre, time slot and optional caregiver. Creates a `requested` appointment — the provider
+ * confirms or declines. No offer/bidding round.
+ */
 export function BookingForm({
   careRequestId,
-  providerId,
   onBooked,
 }: {
   careRequestId: number;
-  providerId?: number;
   onBooked?: () => void;
 }) {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [selectedSlotId, setSelectedSlotId] = useState<number | undefined>();
-  const [start, setStart] = useState(defaultSlot());
-  const [duration, setDuration] = useState(45);
-  const [type, setType] = useState<AppointmentType>('assessment');
+  const [step, setStep] = useReactState<Step>('problem');
+  const [problem, setProblem] = useReactState<string>(PROBLEMS[0]!);
+  const [date, setDate] = useReactState<string>('');
+  const [selectedProvider, setSelectedProvider] = useReactState<MatchingProvider | null>(null);
+  const [selectedCentre, setSelectedCentre] = useReactState<Centre | null>(null);
+  const [selectedSlot, setSelectedSlot] = useReactState<ProviderSlot | null>(null);
+  const [selectedCaregiver, setSelectedCaregiver] = useReactState<number | null>(null);
 
-  const { data: slotsData } = useQuery({
-    queryKey: ['slots', providerId],
-    queryFn: () => (providerId ? api.providerSlots(providerId, { status: 'available' }) : null),
-    enabled: Boolean(providerId),
+  const { data: providers, isPending: matchingPending } = useQuery({
+    queryKey: ['matches', careRequestId],
+    queryFn: () => api.matchesForRequest(careRequestId),
+    enabled: step === 'provider' && date !== '',
   });
 
-  const availableSlots = slotsData?.data ?? [];
+  const { data: centres } = useQuery({
+    queryKey: ['centres', selectedProvider?.provider_id],
+    queryFn: () =>
+      selectedProvider ? api.centres(selectedProvider.provider_id) : Promise.resolve({ data: [] }),
+    enabled: Boolean(selectedProvider),
+  });
 
-  const handleSlotSelect = (slotIdStr: string) => {
-    if (!slotIdStr) {
-      setSelectedSlotId(undefined);
-      return;
-    }
-    const slotId = Number(slotIdStr);
-    const found = availableSlots.find((s) => s.id === slotId);
-    if (found) {
-      setSelectedSlotId(slotId);
-      setStart(toLagosLocal(found.start_time));
-      const startMs = new Date(found.start_time).getTime();
-      const endMs = new Date(found.end_time).getTime();
-      const diffMin = Math.round((endMs - startMs) / 60_000);
-      if (diffMin > 0) setDuration(diffMin);
-    }
-  };
+  const { data: slotsData, isPending: slotsPending } = useQuery({
+    queryKey: ['slots', selectedCentre?.id, date],
+    queryFn: () =>
+      selectedCentre && date
+        ? api.centreSlots(selectedCentre.id, {
+            from: `${date}T00:00:00+01:00`,
+            to: `${date}T23:59:59+01:00`,
+            status: 'available',
+          })
+        : Promise.resolve({ data: [] }),
+    enabled: Boolean(selectedCentre) && Boolean(date),
+  });
+
+  const { data: caregivers } = useQuery({
+    queryKey: ['caregivers', selectedProvider?.provider_id],
+    queryFn: () =>
+      selectedProvider
+        ? api.caregivers(selectedProvider.provider_id)
+        : Promise.resolve({ data: [] }),
+    enabled: Boolean(selectedProvider),
+  });
 
   const book = useMutation({
     mutationFn: () => {
-      const startsAt = lagosLocalToIso(start);
+      if (!selectedProvider || !selectedCentre || !selectedSlot) {
+        throw new Error('Provider, centre and slot required');
+      }
       return api.book({
         care_request_id: careRequestId,
-        starts_at: startsAt,
-        ends_at: addMinutes(startsAt, duration),
-        appointment_type: type,
-        slot_id: selectedSlotId,
+        provider_id: selectedProvider.provider_id,
+        centre_id: selectedCentre.id,
+        starts_at: selectedSlot.start_time,
+        ends_at: selectedSlot.end_time,
+        appointment_type: 'assessment',
+        appointment_mode: 'physical',
+        caregiver_id: selectedCaregiver ?? undefined,
       });
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['appointments'] });
-      void queryClient.invalidateQueries({ queryKey: ['slots'] });
+      void queryClient.invalidateQueries({ queryKey: ['matches'] });
       onBooked?.();
+      navigate(`/patient/requests/${careRequestId}`, { replace: true });
     },
   });
 
-  const submit = (e: FormEvent) => {
+  const centreSlots = (slotsData?.data ?? []).filter((s) => s.start_time.startsWith(date));
+
+  const centreCaregivers = (caregivers?.data ?? []).filter(
+    (c) => c.centre_id === selectedCentre?.id,
+  );
+
+  const back = (next: Step) => () => setStep(next);
+
+  const goToProvider = (e: FormEvent) => {
     e.preventDefault();
-    book.mutate();
+    if (!date) return;
+    setStep('provider');
   };
 
-  return (
-    <form className="form" onSubmit={submit}>
-      <div className="form-grid">
-        {availableSlots.length > 0 && (
-          <Field label="Choose available clinic slot" className="span-2">
-            <select
-              value={selectedSlotId ? String(selectedSlotId) : ''}
-              onChange={(e) => handleSlotSelect(e.target.value)}
-            >
-              <option value="">-- Custom appointment time --</option>
-              {availableSlots.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {formatDateTime(s.start_time)} ({s.status})
-                </option>
+  const chooseProvider = (p: MatchingProvider) => {
+    setSelectedProvider(p);
+    setSelectedCentre(null);
+    setSelectedSlot(null);
+    setSelectedCaregiver(null);
+    setStep('centre');
+  };
+
+  const chooseCentre = (c: Centre) => {
+    setSelectedCentre(c);
+    setSelectedSlot(null);
+    setSelectedCaregiver(null);
+    setStep('slot');
+  };
+
+  const chooseSlot = (s: ProviderSlot) => {
+    setSelectedSlot(s);
+    setStep('confirm');
+  };
+
+  const formatSlot = (s: ProviderSlot) => {
+    return new Date(s.start_time).toLocaleString('en-NG', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+  };
+
+  if (step === 'problem') {
+    return (
+      <>
+        <PageHeader
+          title="Book your visit"
+          subtitle="Tell us what you need and when you'd like to be seen."
+        />
+        <Card>
+          <form className="form" onSubmit={goToProvider}>
+            <Field label="What's the problem?" className="span-2">
+              <select required value={problem} onChange={(e) => setProblem(e.target.value)}>
+                {PROBLEMS.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Preferred date">
+              <input
+                type="date"
+                required
+                value={date}
+                min={toLagosLocal(new Date()).slice(0, 10)}
+                onChange={(e) => setDate(e.target.value)}
+              />
+            </Field>
+            <ErrorNote error={book.error} />
+            <div className="btn-row">
+              <Button type="submit" busy={book.isPending} disabled={!date}>
+                Find clinics
+              </Button>
+            </div>
+          </form>
+        </Card>
+      </>
+    );
+  }
+
+  if (step === 'provider') {
+    if (matchingPending) return <Spinner label="Finding clinics" />;
+    if (!providers?.data || providers.data.length === 0) {
+      return (
+        <>
+          <PageHeader title="Choose a clinic" subtitle="Clinics ranked by match score." />
+          <div className="btn-row" style={{ marginBottom: 16 }}>
+            <Button variant="ghost" onClick={back('problem')}>
+              ← Change problem or date
+            </Button>
+          </div>
+          <Card>
+            <EmptyState title="No clinics available">
+              No verified clinics have open slots on {date}. Try another day.
+            </EmptyState>
+          </Card>
+        </>
+      );
+    }
+    return (
+      <>
+        <PageHeader title="Choose a clinic" subtitle="Clinics ranked by match score." />
+        <div className="btn-row" style={{ marginBottom: 16 }}>
+          <Button variant="ghost" onClick={back('problem')}>
+            ← Change problem or date
+          </Button>
+        </div>
+        <Card>
+          <ul className="list">
+            {providers.data.map((p) => (
+              <li key={p.provider_id} className="list-item">
+                <div className="list-item-main">
+                  <div className="list-item-title">{p.display_name}</div>
+                  <div className="meta">
+                    {p.city} · {p.specialties.join(', ')}
+                  </div>
+                  <div className="meta">
+                    Match: {p.score.total}% ({p.score.tier})
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant={selectedProvider?.provider_id === p.provider_id ? 'primary' : 'ghost'}
+                  onClick={() => chooseProvider(p)}
+                >
+                  Choose {p.display_name}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      </>
+    );
+  }
+
+  if (step === 'centre') {
+    return (
+      <>
+        <PageHeader
+          title="Choose a location"
+          subtitle={`${selectedProvider?.display_name} — pick the centre nearest you.`}
+        />
+        <div className="btn-row" style={{ marginBottom: 16 }}>
+          <Button variant="ghost" onClick={back('provider')}>
+            ← Change clinic
+          </Button>
+        </div>
+        <Card>
+          {centres?.data?.length === 0 ? (
+            <EmptyState title="No locations">
+              This clinic has no operating centres listed yet.
+            </EmptyState>
+          ) : (
+            <ul className="list">
+              {centres?.data.map((c) => (
+                <li key={c.id} className="list-item">
+                  <div className="list-item-main">
+                    <div className="list-item-title">{c.name}</div>
+                    <div className="meta">
+                      {c.address_line}, {c.city}, {c.state} {c.postal_code}
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant={selectedCentre?.id === c.id ? 'primary' : 'ghost'}
+                    onClick={() => chooseCentre(c)}
+                  >
+                    Select {c.name}
+                  </Button>
+                </li>
               ))}
-            </select>
-          </Field>
-        )}
-        <Field label="Start (Lagos time)">
-          <input
-            type="datetime-local"
-            required
-            value={start}
-            min={`${toLagosLocal(new Date()).slice(0, 10)}T00:00`}
-            step={300}
-            onChange={(e) => {
-              setSelectedSlotId(undefined);
-              setStart(e.target.value);
-            }}
-          />
-        </Field>
-        <Field label="Duration">
-          <select value={duration} onChange={(e) => setDuration(Number(e.target.value))}>
-            {DURATIONS.map((d) => (
-              <option key={d} value={d}>
-                {d} minutes
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Appointment type" className="span-2">
-          <select value={type} onChange={(e) => setType(e.target.value as AppointmentType)}>
-            {Object.entries(appointmentType).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </Field>
-      </div>
-      <ErrorNote error={book.error} />
-      <div className="btn-row">
-        <Button type="submit" busy={book.isPending}>
-          Book appointment
-        </Button>
-      </div>
-    </form>
-  );
+            </ul>
+          )}
+        </Card>
+      </>
+    );
+  }
+
+  if (step === 'slot') {
+    return (
+      <>
+        <PageHeader
+          title="Choose a time"
+          subtitle={`${selectedCentre?.name} · ${selectedProvider?.display_name}`}
+        />
+        <div className="btn-row" style={{ marginBottom: 16 }}>
+          <Button variant="ghost" onClick={back('centre')}>
+            ← Change location
+          </Button>
+        </div>
+        <Card>
+          {slotsPending ? (
+            <Spinner label="Loading slots" />
+          ) : centreSlots.length === 0 ? (
+            <EmptyState title="No slots available">
+              No open slots at {selectedCentre?.name} on {date}. Try another day.
+            </EmptyState>
+          ) : (
+            <ul className="list">
+              {centreSlots.map((s) => (
+                <li key={s.id} className="list-item">
+                  <div className="list-item-main">
+                    <div className="list-item-title">{formatSlot(s)}</div>
+                    <div className="meta">
+                      {s.currency ?? 'NGN'} {s.price?.toLocaleString() ?? 'TBD'}
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant={selectedSlot?.id === s.id ? 'primary' : 'ghost'}
+                    onClick={() => chooseSlot(s)}
+                  >
+                    Select
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      </>
+    );
+  }
+
+  if (step === 'confirm') {
+    return (
+      <>
+        <PageHeader title="Confirm your request" subtitle="Review before sending." />
+        <div className="btn-row" style={{ marginBottom: 16 }}>
+          <Button variant="ghost" onClick={back('slot')}>
+            ← Change time
+          </Button>
+        </div>
+        <Card>
+          <dl className="kv">
+            <dt>Clinic</dt>
+            <dd>{selectedProvider?.display_name}</dd>
+            <dt>Location</dt>
+            <dd>{selectedCentre?.name}</dd>
+            <dt>When</dt>
+            <dd>{selectedSlot ? formatSlot(selectedSlot) : ''}</dd>
+            <dt>Mode</dt>
+            <dd>In-person at the centre</dd>
+            {selectedCaregiver ? (
+              <>
+                <dt>Caregiver</dt>
+                <dd>{centreCaregivers.find((c) => c.id === selectedCaregiver)?.full_name ?? ''}</dd>
+              </>
+            ) : null}
+          </dl>
+          <ErrorNote error={book.error} />
+          <div className="btn-row">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setStep('problem')}
+              busy={book.isPending}
+            >
+              Start over
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              onClick={() => book.mutate()}
+              busy={book.isPending}
+            >
+              Send booking request
+            </Button>
+          </div>
+        </Card>
+      </>
+    );
+  }
+
+  return null;
 }

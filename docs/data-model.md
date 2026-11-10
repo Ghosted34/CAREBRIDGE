@@ -27,14 +27,18 @@ erDiagram
 
 | Table | Purpose | Key columns / constraints | Used by API? |
 |---|---|---|---|
-| `users` | Every account | `role` patient/provider_staff/operator/admin · `status` pending/active/suspended · `uq_users_email`, `uq_users_phone` | ✅ |
-| `providers` | Clinics, hospitals, specialists, diagnostic centres | `verification_status` pending/verified/rejected/suspended · `specialties` JSON array · `uq_providers_registration_number` | ✅ |
+| `users` | Every account | `role` patient/provider_staff/operator/admin · `status` pending/active/suspended · KYC fields: `address_street`, `address_city`, `address_state`, `address_postal`, `date_of_birth`, `gender`, `id_number`, `emergency_contact_name`, `emergency_contact_phone` · `uq_users_email`, `uq_users_phone` | ✅ |
+| `providers` | Clinics, hospitals, specialists, diagnostic centres | `verification_status` pending/verified/rejected/suspended · KYC fields: `cac_number`, `tax_id` · `specialties` JSON array · `uq_providers_registration_number` | ✅ |
 | `provider_users` | Staff ↔ provider membership | PK (`provider_id`,`user_id`) · `provider_role` owner/clinician/scheduler/receptionist | ✅ |
+| `provider_centres` | Operating centres of a provider (clinic locations) | `name`, `address_line`, `city`, `state`, `postal_code`, `phone`, `latitude`, `longitude`, `is_active` · `uq_provider_centres_name` (provider_id, name) | ✅ |
 | `care_requests` | A patient's request — start of every journey | `status` (see below) · `urgency` · `assigned_provider_id` (set when an offer is accepted, or when a patient directs the request at a clinic) · `description` is **clinical text** | ✅ |
 | `provider_offers` | A provider offering to take a request | `uq_provider_offers_request_provider` (one per provider per request) · `status` | ✅ |
-| `appointments` | Scheduled visits | `chk_appointments_time_order` (end > start) · `idx_appointments_provider_time` for overlap checks | ✅ |
-| `provider_schedules` | Weekly clinic opening hours | `uq_provider_schedules_day`, `day_of_week` (0-6), `slot_duration_minutes` | ✅ |
-| `provider_slots` | Bookable appointment slots | `start_time`, `end_time`, `status` available/held/booked/cancelled | ✅ |
+| `appointments` | Scheduled visits | `chk_appointments_time_order` (end > start) · `idx_appointments_provider_time` for overlap checks · `status` includes `requested` · `appointment_mode` physical/remote · `centre_id` | ✅ |
+| `provider_schedules` | Weekly clinic opening hours per centre | `centre_id` · `uq_provider_schedules_day`, `day_of_week` (0-6), `slot_duration_minutes` | ✅ |
+| `provider_slots` | Bookable appointment slots | `centre_id` · `start_time`, `end_time`, `status` available/held/booked/cancelled · `price DECIMAL(14,2)`, `currency CHAR(3)` | ✅ |
+| `provider_caregivers` | Caregivers / clinicians at a centre | `full_name`, `role` dentist/caregiver/hygienist/specialist, `is_active` · `centre_id` | ✅ |
+| `provider_fees` | Customizable fee types per provider/centre | `fee_type` consultancy/treatment/late_change/rescheduling/no_show/other · `amount DECIMAL(14,2)`, `currency CHAR(3)` · `is_active` | ✅ |
+| `appointment_notes` | Post-visit notes added by provider | `appointment_id`, `author_user_id`, `note_type` follow_up/referral/prescription/closing_consultancy, `summary` | ✅ |
 | `clinical_referrals` | Clinician-to-clinician referrals | `clinical_summary` is clinical text | ✅ |
 | `service_estimates` | Estimated charges | `amount DECIMAL(14,2)`, `chk_service_estimates_amount` ≥ 0 | ✅ |
 | `clinical_documents` | Photos, X-rays, lab reports in encrypted storage | `care_request_id`, `uploader_user_id`, `storage_key`, `document_type` | ✅ |
@@ -55,8 +59,26 @@ Every foreign key and index is explicitly named (`fk_…`, `idx_…`, `uq_…`, 
 - **Team management** is `provider_users` only. An `owner` of a verified clinic inserts or deletes rows for
   `clinician`/`scheduler`/`receptionist` (`TEAM_ROLES`); `owner` rows are never removable through that path.
   Adding a `pending` account also flips `users.status` to `active` (audited `USER_ACTIVATED`).
+- **Operating centres** (`provider_centres`) belong to a provider. Schedules and slots are scoped to a centre.
+  A clinic with multiple locations (e.g. Lekki, Ikeja) has one centre per location; patients pick a centre
+  when booking.
+- **Caregivers** (`provider_caregivers`) are dentists/caregivers/hygienists working at a centre. Patients can
+  optionally request a specific caregiver when booking.
+- **Priced slots** (`provider_slots.price`, `provider_slots.currency`) let staff set a price per slot.
+  `provider_fees` defines customizable fee types (consultancy, treatment, late_change, rescheduling, no_show,
+  other) per provider/centre.
+- **Simplified booking flow** creates appointments as `requested` (state machine: `requested → confirmed |
+  cancelled`). The patient picks provider + centre + slot + optional caregiver directly — no offer/bidding
+  round. The slot is `held` until the provider confirms (→ `booked`) or declines (→ slot released to
+  `available`). Booking mode (`physical` or `remote`) is recorded on the appointment.
 - **Directed requests** reuse `care_requests.assigned_provider_id`: the row is inserted as `submitted` and moved
   to `provider_accepted` by the state machine, audited as `CARE_REQUEST_ASSIGNED` with `{ directed: true }`.
+- **Patient KYC** (`users.*` KYC fields) captures a single changeable address used for provider matching, plus
+  DOB, gender, ID number and emergency contact. **Provider KYC** (`providers.cac_number`, `providers.tax_id`)
+  is verified manually by platform admin.
+- **Post-visit notes** (`appointment_notes`) are added by the provider team after check-in. Note types:
+  follow_up, referral, prescription, closing_consultancy. No clinical diagnosis — the platform does not
+  diagnose.
 - **Post-visit governance** is derived, never stored: `GET /requests/assigned` counts `appointments` for the
   request with `status IN ('checked_in','completed')` as `assessments_completed`. Estimates, referrals and
   treatment planning are refused (`409 VISIT_REQUIRED`) while that count is 0.
@@ -94,7 +116,9 @@ stateDiagram-v2
 
 ```mermaid
 stateDiagram-v2
-  [*] --> booked
+  [*] --> requested
+  requested --> confirmed: provider confirms
+  requested --> cancelled: provider declines or patient cancels
   booked --> confirmed
   booked --> cancelled
   confirmed --> checked_in

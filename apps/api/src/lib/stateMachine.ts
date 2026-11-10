@@ -23,6 +23,7 @@ export const transitions = {
     withdrawn: [],
   },
   appointment: {
+    requested: ['confirmed', 'cancelled'],
     booked: ['confirmed', 'cancelled'],
     confirmed: ['checked_in', 'cancelled', 'no_show'],
     checked_in: ['completed'],

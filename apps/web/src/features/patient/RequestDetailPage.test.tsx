@@ -1,6 +1,6 @@
 import { screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import type { Appointment, CareRequest, Offer } from '../../api/types';
+import type { Appointment, CareRequest } from '../../api/types';
 import { formatTimeRange } from '../../lib/time';
 import { mockApi, patientUser, renderApp } from '../../test/utils';
 import { RequestDetailPage } from './RequestDetailPage';
@@ -23,17 +23,6 @@ const request: CareRequest = {
   updated_at: iso(-day),
 };
 
-const acceptedOffer: Offer = {
-  id: 5,
-  provider_id: 3,
-  provider: 'Ikeja Dental',
-  provider_address: '12 Awolowo Road, Ikeja',
-  message: null,
-  status: 'accepted',
-  offered_at: iso(-day),
-  responded_at: iso(-day),
-};
-
 const appointment = (over: Partial<Appointment>): Appointment => ({
   id: 30,
   care_request_id: 12,
@@ -45,6 +34,8 @@ const appointment = (over: Partial<Appointment>): Appointment => ({
   starts_at: iso(day),
   ends_at: iso(day + 45 * 60_000),
   status: 'booked',
+  centre_id: null,
+  appointment_mode: 'physical',
   created_at: iso(-day),
   ...over,
 });
@@ -52,14 +43,15 @@ const appointment = (over: Partial<Appointment>): Appointment => ({
 const mock = (appointments: Appointment[]) =>
   mockApi({
     'GET /requests/12': { body: { data: request } },
-    'GET /requests/12/offers': { body: { data: [acceptedOffer] } },
     'GET /appointments/mine': {
       body: { data: appointments, meta: { limit: 50, offset: 0, count: appointments.length } },
     },
     'GET /requests/12/estimates': { body: { data: [] } },
     'GET /requests/12/documents': { body: { data: [] } },
     'GET /requests/12/payments': { body: { data: [] } },
-    'GET /providers/3/slots': { body: { data: [] } },
+    'GET /requests/12/matches': { body: { data: [] } },
+    'GET /providers/3/centres': { body: { data: [] } },
+    'GET /providers/3/caregivers': { body: { data: [] } },
   });
 
 const render = () =>
@@ -73,8 +65,11 @@ describe('RequestDetailPage booking', () => {
   it('offers the booking form while no appointment is live', async () => {
     mock([]);
     render();
-    expect(await screen.findByRole('heading', { name: 'Book an appointment' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Book appointment' })).toBeEnabled();
+    expect(await screen.findByRole('heading', { name: 'Book your visit' })).toBeInTheDocument();
+    // Date is required before "Find clinics" is enabled.
+    const dateInput = screen.getByLabelText(/Preferred date/i);
+    expect(dateInput).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Find clinics' })).toBeDisabled();
     expect(screen.queryByRole('heading', { name: 'Upcoming appointment' })).not.toBeInTheDocument();
   });
 
@@ -100,14 +95,13 @@ describe('RequestDetailPage booking', () => {
       appointment({ id: 31, status: 'cancelled', starts_at: iso(day), ends_at: iso(day + day) }),
     ]);
     render();
-    expect(await screen.findByRole('heading', { name: 'Book an appointment' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Book your visit' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Upcoming appointment' })).not.toBeInTheDocument();
   });
 
   it('still hides booking when the request is not bookable at all', async () => {
     mockApi({
       'GET /requests/12': { body: { data: { ...request, status: 'submitted' } } },
-      'GET /requests/12/offers': { body: { data: [] } },
       'GET /appointments/mine': {
         body: { data: [], meta: { limit: 50, offset: 0, count: 0 } },
       },
@@ -117,7 +111,7 @@ describe('RequestDetailPage booking', () => {
       'GET /requests/12/matches': { body: { data: [] } },
     });
     render();
-    expect(await screen.findByRole('heading', { name: 'Provider offers' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Matching clinics' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Book an appointment' })).not.toBeInTheDocument();
   });
 });

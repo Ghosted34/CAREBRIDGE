@@ -46,6 +46,7 @@ export const offerStatus: Record<OfferStatus, { label: string; tone: Tone }> = {
 };
 
 export const appointmentStatus: Record<AppointmentStatus, { label: string; tone: Tone }> = {
+  requested: { label: 'Requested', tone: 'gold' },
   booked: { label: 'Booked', tone: 'gold' },
   confirmed: { label: 'Confirmed', tone: 'teal' },
   checked_in: { label: 'Checked in', tone: 'teal' },

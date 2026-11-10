@@ -2,7 +2,8 @@ import type { Db, Result, Row } from '../../db/pool.js';
 import type { Pagination } from '../../lib/validate.js';
 
 const FIELDS = `a.id, a.care_request_id, a.patient_user_id, u.full_name AS patient_name, a.provider_id,
-  p.display_name AS provider, a.appointment_type, a.starts_at, a.ends_at, a.status, a.created_at`;
+  p.display_name AS provider, a.appointment_type, a.appointment_mode, a.centre_id,
+  a.starts_at, a.ends_at, a.status, a.created_at`;
 const FROM = `appointments a JOIN providers p ON p.id = a.provider_id JOIN users u ON u.id = a.patient_user_id`;
 
 export async function insert(
@@ -11,27 +12,51 @@ export async function insert(
     care_request_id: number;
     patient_user_id: number;
     provider_id: number;
+    centre_id: number | null;
     appointment_type: string;
+    appointment_mode: string;
     starts_at: Date;
     ends_at: Date;
+    status: string;
     created_by_user_id: number;
   },
 ) {
   const [r] = await db.execute<Result>(
-    `INSERT INTO appointments(care_request_id, patient_user_id, provider_id, appointment_type,
-       starts_at, ends_at, status, created_by_user_id)
-     VALUES (?, ?, ?, ?, ?, ?, 'booked', ?)`,
+    `INSERT INTO appointments(care_request_id, patient_user_id, provider_id, centre_id, appointment_type,
+       appointment_mode, starts_at, ends_at, status, created_by_user_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       a.care_request_id,
       a.patient_user_id,
       a.provider_id,
+      a.centre_id,
       a.appointment_type,
+      a.appointment_mode,
       a.starts_at,
       a.ends_at,
+      a.status,
       a.created_by_user_id,
     ],
   );
   return r.insertId;
+}
+
+/**
+ * Update the provider on a requested appointment (patient picks a different provider
+ * before the clinic confirms). Only allowed while status is `requested`.
+ */
+export async function updateRequestProvider(
+  db: Db,
+  id: number,
+  providerId: number,
+  centreId: number | null,
+): Promise<number> {
+  const [r] = await db.execute<Result>(
+    `UPDATE appointments SET provider_id = ?, centre_id = ?
+      WHERE id = ? AND status = 'requested'`,
+    [providerId, centreId, id],
+  );
+  return r.affectedRows;
 }
 
 /**
@@ -48,11 +73,14 @@ export async function countSeenForRequest(db: Db, careRequestId: number) {
   return Number(rows[0]?.n ?? 0);
 }
 
-/** Active (booked/confirmed) appointments for a provider that overlap [start, end). */
+/**
+ * Active (requested/booked/confirmed) appointments for a provider that overlap [start, end).
+ * A `requested` appointment holds its slot until the provider confirms or declines.
+ */
 export async function findOverlapping(db: Db, providerId: number, start: Date, end: Date) {
   const [rows] = await db.execute<Row[]>(
     `SELECT id FROM appointments
-      WHERE provider_id = ? AND status IN ('booked','confirmed') AND starts_at < ? AND ends_at > ?`,
+      WHERE provider_id = ? AND status IN ('requested','booked','confirmed') AND starts_at < ? AND ends_at > ?`,
     [providerId, end, start],
   );
   return rows;
@@ -102,7 +130,7 @@ export async function setStatus(db: Db, id: number, status: string) {
 
 export async function cancelActiveForRequest(db: Db, requestId: number) {
   const [r] = await db.execute<Result>(
-    `UPDATE appointments SET status = 'cancelled' WHERE care_request_id = ? AND status IN ('booked','confirmed')`,
+    `UPDATE appointments SET status = 'cancelled' WHERE care_request_id = ? AND status IN ('requested','booked','confirmed')`,
     [requestId],
   );
   return r.affectedRows;
