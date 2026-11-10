@@ -320,6 +320,7 @@ async function main() {
       const slots: { start_time: string; end_time: string; price: number; currency: string }[] = [];
       const current = new Date(`${startDate}T00:00:00Z`);
       const end = new Date(`${endDate}T23:59:59Z`);
+      const mysqlDT = (d: Date) => d.toISOString().slice(0, 19).replace('T', ' ');
       while (current <= end) {
         const dayOfWeek = current.getUTCDay();
         if (dayOfWeek >= 1 && dayOfWeek <= 5) {
@@ -341,8 +342,8 @@ async function main() {
           ) {
             const slotEnd = new Date(slotStart.getTime() + 30 * 60_000);
             slots.push({
-              start_time: slotStart.toISOString(),
-              end_time: slotEnd.toISOString(),
+              start_time: mysqlDT(slotStart),
+              end_time: mysqlDT(slotEnd),
               price: 15000,
               currency: 'NGN',
             });
@@ -367,8 +368,8 @@ async function main() {
           ) {
             const slotEnd = new Date(slotStart.getTime() + 30 * 60_000);
             slots.push({
-              start_time: slotStart.toISOString(),
-              end_time: slotEnd.toISOString(),
+              start_time: mysqlDT(slotStart),
+              end_time: mysqlDT(slotEnd),
               price: 15000,
               currency: 'NGN',
             });
