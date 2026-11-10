@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router';
 import type { Role } from '../api/types';
 import { useAuth } from '../auth/authContext';
+import { ClinicSwitcher } from './ClinicSwitcher';
 import { NotificationBell } from './NotificationBell';
 
 const NAV: Record<Role, { to: string; label: string }[]> = {
@@ -18,6 +19,7 @@ const NAV: Record<Role, { to: string; label: string }[]> = {
     { to: '/provider/capacity', label: 'Capacity' },
     { to: '/provider/referrals', label: 'Referrals' },
     { to: '/provider/offers', label: 'Offers' },
+    { to: '/provider/team', label: 'Team' },
   ],
   operator: [
     { to: '/ops', label: 'Overview' },
@@ -81,6 +83,7 @@ export function Layout() {
           <div className="topbar-user">
             {user ? (
               <>
+                <ClinicSwitcher />
                 <NotificationBell />
                 <span className="user-chip" title={user.email}>
                   {user.full_name}

@@ -5,7 +5,7 @@ import { ApiError } from '../../api/client';
 import { api } from '../../api/endpoints';
 import { useAuth } from '../../auth/authContext';
 import { cleanIdentifier } from '../../lib/text';
-import { Button, Card, ErrorNote, Field, Notice } from '../../components/ui';
+import { Button, Card, ErrorNote, Field, Notice, PasswordField } from '../../components/ui';
 
 export function RegisterPage() {
   const { login } = useAuth();
@@ -20,6 +20,16 @@ export function RegisterPage() {
     accept_privacy: false,
     marketing_opt_in: false,
   });
+  // Filled in only by clinic / provider staff: the facility is created `pending` and this person
+  // becomes its owner, so they can manage their own team once CareBridge verifies it.
+  const [clinic, setClinic] = useState({
+    legal_name: '',
+    display_name: '',
+    registration_number: '',
+    address: '',
+    specialties: 'dentistry',
+  });
+  const isClinic = form.role === 'provider_staff';
   const check =
     (k: 'accept_terms' | 'accept_privacy' | 'marketing_opt_in') =>
     (e: { target: { checked: boolean } }) =>
@@ -33,7 +43,24 @@ export function RegisterPage() {
 
   const register = useMutation({
     mutationFn: async () => {
-      const r = await api.register(form);
+      const r = await api.register({
+        ...form,
+        clinic: isClinic
+          ? {
+              legal_name: clinic.legal_name,
+              display_name: clinic.display_name,
+              provider_type: 'clinic',
+              registration_number: clinic.registration_number,
+              city: 'Lagos',
+              address: clinic.address,
+              // Comma separated in the field, snake_case array for the API (e.g. "Oral surgery").
+              specialties: clinic.specialties
+                .split(',')
+                .map((x) => x.trim().toLowerCase().replace(/\s+/g, '_'))
+                .filter(Boolean),
+            }
+          : undefined,
+      });
       if (r.data.status === 'active') {
         await login(form.email, form.password);
         navigate('/patient/new', { replace: true });
@@ -50,9 +77,9 @@ export function RegisterPage() {
         <Card>
           <h1>Thanks — we’ll be in touch</h1>
           <Notice tone="success">
-            Your provider staff account has been created and is <strong>awaiting approval</strong>.
-            A CareBridge administrator will verify your clinic and link your account before you can
-            sign in.
+            Your account and facility details have been submitted and are{' '}
+            <strong>awaiting verification</strong>. CareBridge checks your registration, then you
+            can sign in and manage your clinic team yourself.
           </Notice>
           <p style={{ marginTop: 14 }}>
             <Link to="/">Back to home</Link>
@@ -122,15 +149,76 @@ export function RegisterPage() {
             />
           </Field>
           <Field label="Password" hint="At least 10 characters" error={fe('password')}>
-            <input
-              type="password"
+            <PasswordField
               autoComplete="new-password"
               required
               minLength={10}
               value={form.password}
-              onChange={set('password')}
+              onValueChange={(password) => setForm((f) => ({ ...f, password }))}
             />
           </Field>
+          {isClinic && (
+            <fieldset className="consent-box">
+              <legend className="legend">Your facility</legend>
+              <p className="small muted">
+                Submitted for verification. Nothing is published and no patient can reach you until
+                CareBridge approves it.
+              </p>
+              <div className="form-grid">
+                <Field label="Clinic name" error={fe('clinic')}>
+                  <input
+                    required
+                    autoComplete="organization"
+                    placeholder="e.g. Lekki Smile Clinic"
+                    value={clinic.display_name}
+                    onChange={(e) => setClinic((c) => ({ ...c, display_name: e.target.value }))}
+                  />
+                </Field>
+                <Field label="Registered (legal) name">
+                  <input
+                    required
+                    autoComplete="organization"
+                    placeholder="e.g. Lekki Smile Clinic Ltd"
+                    value={clinic.legal_name}
+                    onChange={(e) => setClinic((c) => ({ ...c, legal_name: e.target.value }))}
+                  />
+                </Field>
+                <Field
+                  label="Registration number"
+                  hint="MDCN or state facility registration"
+                  className="span-2"
+                >
+                  <input
+                    required
+                    placeholder="e.g. MDCN/R/12345"
+                    value={clinic.registration_number}
+                    onChange={(e) =>
+                      setClinic((c) => ({ ...c, registration_number: e.target.value }))
+                    }
+                  />
+                </Field>
+                <Field label="Address" className="span-2">
+                  <input
+                    required
+                    placeholder="Street, area, Lagos"
+                    value={clinic.address}
+                    onChange={(e) => setClinic((c) => ({ ...c, address: e.target.value }))}
+                  />
+                </Field>
+                <Field
+                  label="Specialties"
+                  hint="Comma separated, e.g. dentistry, endodontics"
+                  className="span-2"
+                >
+                  <input
+                    required
+                    value={clinic.specialties}
+                    onChange={(e) => setClinic((c) => ({ ...c, specialties: e.target.value }))}
+                  />
+                </Field>
+              </div>
+            </fieldset>
+          )}
           <fieldset className="consents">
             <legend className="legend">Agreements</legend>
             <label className="check">
@@ -180,7 +268,7 @@ export function RegisterPage() {
             busy={register.isPending}
             disabled={!form.accept_terms || !form.accept_privacy}
           >
-            Create account
+            {isClinic ? 'Submit for verification' : 'Create account'}
           </Button>
         </form>
         <p className="muted small" style={{ marginTop: 14 }}>

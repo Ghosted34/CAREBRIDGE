@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
+import { Link } from 'react-router';
 import { api } from '../../api/endpoints';
 import { Card, EmptyState, ErrorNote, Field, PageHeader, Pill, Spinner } from '../../components/ui';
 import { titleCase } from '../../lib/labels';
@@ -17,7 +18,8 @@ export function ProvidersPage() {
     <>
       <PageHeader
         title="Verified providers"
-        subtitle="Every provider listed has been checked by CareBridge."
+        subtitle="Every provider listed has been checked by CareBridge. Found the right one? Send
+          your request straight to them."
       />
       <Card>
         <div className="form-grid">
@@ -64,6 +66,12 @@ export function ProvidersPage() {
                   </Pill>
                 ))}
                 {!p.accepting_referrals && <Pill tone="grey">Not taking new patients</Pill>}
+              </div>
+              <div className="btn-row" style={{ marginTop: 12 }}>
+                {/* Goes straight to this clinic: the request is routed to them, not to the open queue. */}
+                <Link to={`/patient/new?providerId=${p.id}`} className="btn btn-primary btn-sm">
+                  Request care here
+                </Link>
               </div>
             </div>
           ))}

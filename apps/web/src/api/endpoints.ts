@@ -9,6 +9,7 @@ import type {
   AssignedRequest,
   AuditLog,
   CareRequest,
+  ClinicRegistration,
   CareRequestSummary,
   ClinicalDocument,
   ClinicalReferral,
@@ -36,7 +37,9 @@ import type {
   RequestStatus,
   ServiceEstimate,
   SlotStatus,
+  StaffAccount,
   StuckRequest,
+  TeamRole,
   Urgency,
   UserStatus,
   VerificationStatus,
@@ -59,7 +62,13 @@ export const api = {
     accept_terms: boolean;
     accept_privacy: boolean;
     marketing_opt_in: boolean;
-  }) => post<Envelope<{ id: number; role: string; status: UserStatus }>>('/auth/register', body),
+    /** Facility details when a clinic registers itself; the provider starts `pending`. */
+    clinic?: ClinicRegistration;
+  }) =>
+    post<Envelope<{ id: number; role: string; status: UserStatus; provider_id?: number }>>(
+      '/auth/register',
+      body,
+    ),
   me: () => get<Envelope<Me>>('/me'),
 
   // notifications (in-app inbox)
@@ -88,6 +97,18 @@ export const api = {
   // public directory
   providers: (p: { specialty?: string; city?: string } = {}) =>
     get<ListEnvelope<Provider>>(`/providers${qs(p)}`),
+  provider: (id: number) => get<Envelope<Provider>>(`/providers/${id}`),
+
+  // clinic team (owner-managed, once the facility is verified)
+  team: (providerId: number) => get<Envelope<ProviderMember[]>>(`/providers/${providerId}/team`),
+  addTeamMember: (providerId: number, user_id: number, provider_role: TeamRole) =>
+    post<Envelope<{ provider_id: number; user_id: number; provider_role: TeamRole }>>(
+      `/providers/${providerId}/team`,
+      { user_id, provider_role },
+    ),
+  removeTeamMember: (providerId: number, userId: number) =>
+    request<Envelope<{ removed: boolean }>>('DELETE', `/providers/${providerId}/team/${userId}`),
+  staffAccounts: (q: string) => get<ListEnvelope<StaffAccount>>(`/staff-accounts${qs({ q })}`),
 
   // care requests
   createRequest: (body: {
@@ -97,14 +118,16 @@ export const api = {
     preferred_city: string;
     urgency: Urgency;
     has_emergency_symptoms: boolean;
+    /** Set when the patient picked a clinic in the directory: routes the request straight to it. */
+    target_provider_id?: number;
   }) => post<Envelope<{ id: number; status: RequestStatus }>>('/requests', body),
   myRequests: () => get<ListEnvelope<CareRequestSummary>>('/requests/mine'),
   request: (id: number) => get<Envelope<CareRequest>>(`/requests/${id}`),
   cancelRequest: (id: number) =>
     post<Envelope<{ id: number; status: RequestStatus }>>(`/requests/${id}/cancel`),
-  queue: (p: { specialty?: string } = {}) =>
+  queue: (p: { specialty?: string; provider_id?: number } = {}) =>
     get<ListEnvelope<QueueItem>>(`/requests/queue${qs(p)}`),
-  assigned: (p: { status?: RequestStatus } = {}) =>
+  assigned: (p: { status?: RequestStatus; provider_id?: number } = {}) =>
     get<ListEnvelope<AssignedRequest>>(`/requests/assigned${qs(p)}`),
   progressRequest: (id: number, step: JourneyStep) =>
     post<Envelope<{ id: number; status: RequestStatus }>>(`/requests/${id}/${step}`),
@@ -116,7 +139,8 @@ export const api = {
   acceptOffer: (id: number) => post<Envelope<{ id: number }>>(`/offers/${id}/accept`),
   declineOffer: (id: number) => post<Envelope<{ id: number }>>(`/offers/${id}/decline`),
   withdrawOffer: (id: number) => post<Envelope<{ id: number }>>(`/offers/${id}/withdraw`),
-  myOffers: () => get<ListEnvelope<ProviderOffer>>('/offers/mine'),
+  myOffers: (p: { provider_id?: number } = {}) =>
+    get<ListEnvelope<ProviderOffer>>(`/offers/mine${qs(p)}`),
 
   // appointments
   book: (body: {
@@ -126,7 +150,8 @@ export const api = {
     appointment_type: AppointmentType;
     slot_id?: number;
   }) => post<Envelope<{ id: number }>>('/appointments', body),
-  myAppointments: () => get<ListEnvelope<Appointment>>('/appointments/mine'),
+  myAppointments: (p: { provider_id?: number } = {}) =>
+    get<ListEnvelope<Appointment>>(`/appointments/mine${qs(p)}`),
   appointmentAction: (id: number, verb: AppointmentVerb) =>
     post<Envelope<{ id: number }>>(`/appointments/${id}/${verb}`),
 

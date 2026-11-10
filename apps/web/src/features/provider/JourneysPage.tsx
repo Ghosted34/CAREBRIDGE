@@ -12,21 +12,29 @@ import {
   ErrorNote,
   Field,
   Modal,
+  NumberField,
   PageHeader,
   Pill,
   Spinner,
 } from '../../components/ui';
 import { requestStatus, titleCase, urgency } from '../../lib/labels';
 import { formatDateTime } from '../../lib/time';
+import { useActiveClinic } from './activeClinic';
 
-/** The next clinical step a provider can take from each status. */
-const NEXT: Partial<Record<RequestStatus, { step: JourneyStep; label: string }[]>> = {
+/**
+ * The next clinical step a provider can take from each status. `needsVisit` steps are gated on
+ * the patient having been seen (an appointment checked in or completed) — clinical governance;
+ * the API refuses them with 409 VISIT_REQUIRED until then.
+ */
+const NEXT: Partial<
+  Record<RequestStatus, { step: JourneyStep; label: string; needsVisit?: boolean }[]>
+> = {
   provider_accepted: [{ step: 'start-assessment', label: 'Start assessment' }],
   assessment: [
-    { step: 'plan-treatment', label: 'Treatment planned' },
+    { step: 'plan-treatment', label: 'Treatment planned', needsVisit: true },
     { step: 'complete', label: 'Complete (no treatment needed)' },
   ],
-  treatment_planned: [{ step: 'start-treatment', label: 'Start treatment' }],
+  treatment_planned: [{ step: 'start-treatment', label: 'Start treatment', needsVisit: true }],
   in_progress: [{ step: 'complete', label: 'Mark completed' }],
 };
 const BOOKABLE: RequestStatus[] = [
@@ -35,6 +43,43 @@ const BOOKABLE: RequestStatus[] = [
   'treatment_planned',
   'in_progress',
 ];
+/** Statuses where a post-visit action (estimate, referral) is offered at all. */
+const GOVERNED: RequestStatus[] = ['assessment', 'treatment_planned', 'in_progress'];
+
+/** Clinical governance: has the patient been seen for this request yet? */
+const seen = (r: AssignedRequest) => Number(r.assessments_completed ?? 0) > 0;
+const VISIT_HINT = 'Available once the patient has been seen (appointment checked in or completed)';
+
+type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
+
+/**
+ * An action that only exists after the first visit. Disabled (with the reason) rather than hidden
+ * so staff can see what comes next; the API refuses it too, with 409 VISIT_REQUIRED.
+ */
+function GovernedButton({
+  label,
+  visited,
+  required = true,
+  variant = 'ghost',
+  busy,
+  onClick,
+}: {
+  label: string;
+  visited: boolean;
+  required?: boolean;
+  variant?: ButtonVariant;
+  busy?: boolean;
+  onClick: () => void;
+}) {
+  const blocked = required && !visited;
+  return (
+    <span title={blocked ? VISIT_HINT : undefined}>
+      <Button variant={variant} busy={busy} disabled={blocked} onClick={onClick}>
+        {label}
+      </Button>
+    </span>
+  );
+}
 
 export function JourneysPage() {
   const { user } = useAuth();
@@ -44,19 +89,20 @@ export function JourneysPage() {
   const [estimateFor, setEstimateFor] = useState<AssignedRequest | null>(null);
   const [referralFor, setReferralFor] = useState<AssignedRequest | null>(null);
 
-  // Form states
-  const [estAmount, setEstAmount] = useState(25000);
+  // Form states (money is edited as text so the field can be cleared and formatted)
+  const [estAmount, setEstAmount] = useState('25000');
   const [estInclusions, setEstInclusions] = useState('Consultation, digital X-rays, treatment');
   const [estExclusions, setEstExclusions] = useState('Prescription medication');
 
   const [refSpecialty, setRefSpecialty] = useState('Endodontics');
   const [refSummary, setRefSummary] = useState('');
-  const [refProviderId, setRefProviderId] = useState<number>(2);
+  const [refProviderId, setRefProviderId] = useState<number | ''>('');
 
   const queryClient = useQueryClient();
+  const { clinicId } = useActiveClinic();
   const q = useQuery({
-    queryKey: ['requests', 'assigned', status],
-    queryFn: () => api.assigned({ status: status || undefined }),
+    queryKey: ['requests', 'assigned', status, clinicId],
+    queryFn: () => api.assigned({ status: status || undefined, provider_id: clinicId }),
   });
   const providersQuery = useQuery({
     queryKey: ['providers'],
@@ -71,7 +117,7 @@ export function JourneysPage() {
   const issueEstimate = useMutation({
     mutationFn: () =>
       api.createEstimate(estimateFor!.id, {
-        amount: estAmount,
+        amount: Number(estAmount.replace(/[^0-9.]/g, '')),
         currency: 'NGN',
         inclusions: estInclusions,
         exclusions: estExclusions,
@@ -85,7 +131,7 @@ export function JourneysPage() {
   const createReferral = useMutation({
     mutationFn: () =>
       api.createReferral(referralFor!.id, {
-        receiving_provider_id: refProviderId,
+        receiving_provider_id: Number(refProviderId),
         referred_specialty: refSpecialty,
         clinical_summary: refSummary,
       }),
@@ -167,30 +213,39 @@ export function JourneysPage() {
               </details>
               <div className="btn-row" style={{ marginTop: 12 }}>
                 {(NEXT[r.status] ?? []).map((n, i) => (
-                  <Button
+                  <GovernedButton
                     key={n.step}
+                    label={n.label}
                     variant={i === 0 ? 'primary' : 'ghost'}
+                    visited={seen(r)}
+                    required={!!n.needsVisit}
                     busy={
                       progress.isPending &&
                       progress.variables?.id === r.id &&
                       progress.variables.step === n.step
                     }
                     onClick={() => progress.mutate({ id: r.id, step: n.step })}
-                  >
-                    {n.label}
-                  </Button>
+                  />
                 ))}
                 {BOOKABLE.includes(r.status) && (
+                  <Button variant="secondary" onClick={() => setBooking(r)}>
+                    Book appointment
+                  </Button>
+                )}
+                {GOVERNED.includes(r.status) && (
                   <>
-                    <Button variant="secondary" onClick={() => setBooking(r)}>
-                      Book appointment
-                    </Button>
-                    <Button variant="ghost" onClick={() => setEstimateFor(r)}>
-                      Issue estimate
-                    </Button>
-                    <Button variant="ghost" onClick={() => setReferralFor(r)}>
-                      Refer patient
-                    </Button>
+                    <GovernedButton
+                      label="Issue estimate"
+                      variant="ghost"
+                      visited={seen(r)}
+                      onClick={() => setEstimateFor(r)}
+                    />
+                    <GovernedButton
+                      label="Refer patient"
+                      variant="ghost"
+                      visited={seen(r)}
+                      onClick={() => setReferralFor(r)}
+                    />
                   </>
                 )}
               </div>
@@ -216,15 +271,8 @@ export function JourneysPage() {
             Provide transparent pricing before clinical treatment begins. The patient will review
             and approve.
           </p>
-          <Field label="Amount (NGN)">
-            <input
-              type="number"
-              min={1000}
-              max={10000000}
-              step={1000}
-              value={estAmount}
-              onChange={(e) => setEstAmount(Number(e.target.value))}
-            />
+          <Field label="Amount (NGN)" hint="Whole naira, at least 1,000.">
+            <NumberField value={estAmount} onValueChange={setEstAmount} max={10_000_000} required />
           </Field>
           <Field label="Inclusions">
             <textarea
@@ -245,7 +293,11 @@ export function JourneysPage() {
             <Button variant="ghost" onClick={() => setEstimateFor(null)}>
               Cancel
             </Button>
-            <Button busy={issueEstimate.isPending} onClick={() => issueEstimate.mutate()}>
+            <Button
+              busy={issueEstimate.isPending}
+              disabled={!estAmount || Number(estAmount) < 1000}
+              onClick={() => issueEstimate.mutate()}
+            >
               Issue estimate
             </Button>
           </div>
@@ -264,20 +316,25 @@ export function JourneysPage() {
           </p>
           <Field label="Receiving Clinic / Specialist">
             <select
+              required
               value={refProviderId}
-              onChange={(e) => setRefProviderId(Number(e.target.value))}
+              onChange={(e) => setRefProviderId(e.target.value ? Number(e.target.value) : '')}
             >
-              {(providersQuery.data?.data ?? []).map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.display_name} ({p.city})
-                </option>
-              ))}
+              <option value="">Choose a clinic…</option>
+              {(providersQuery.data?.data ?? [])
+                .filter((p) => p.id !== referralFor?.assigned_provider_id)
+                .map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.display_name} ({p.city})
+                  </option>
+                ))}
             </select>
           </Field>
-          <Field label="Referred Specialty">
+          <Field label="Referred specialty">
             <input
-              type="text"
               required
+              maxLength={100}
+              placeholder="e.g. Endodontics"
               value={refSpecialty}
               onChange={(e) => setRefSpecialty(e.target.value)}
             />
@@ -298,7 +355,7 @@ export function JourneysPage() {
             </Button>
             <Button
               busy={createReferral.isPending}
-              disabled={!refSummary.trim()}
+              disabled={!refSummary.trim() || !refProviderId}
               onClick={() => createReferral.mutate()}
             >
               Send referral

@@ -124,6 +124,33 @@ export async function makeRequest(patient: TestUser, over: Record<string, unknow
   return res.body.data.id as number;
 }
 
+/**
+ * Book an appointment on an accepted request and take it to `completed` — the point after which
+ * clinical governance allows estimates, referrals and treatment planning (see VISIT_REQUIRED).
+ */
+export async function completeVisit(patient: TestUser, staff: TestUser, requestId: number) {
+  const booked = await api
+    .post('/api/v1/appointments')
+    .set(patient.auth)
+    .send({
+      care_request_id: requestId,
+      starts_at: inHours(24),
+      ends_at: inHours(25),
+      appointment_type: 'assessment',
+    });
+  if (booked.status !== 201)
+    throw new Error(
+      `completeVisit booking failed: ${booked.status} ${JSON.stringify(booked.body)}`,
+    );
+  const id = booked.body.data.id as number;
+  for (const verb of ['confirm', 'check-in', 'complete']) {
+    const r = await api.post(`/api/v1/appointments/${id}/${verb}`).set(staff.auth);
+    if (r.status !== 200)
+      throw new Error(`completeVisit ${verb} failed: ${r.status} ${JSON.stringify(r.body)}`);
+  }
+  return id;
+}
+
 /** Patient request → provider offer → patient accepts. Returns ids for booking tests. */
 export async function acceptedRequest() {
   const patient = await makeUser('patient');

@@ -4,6 +4,7 @@ import { audit } from '../../lib/audit.js';
 import { AppError } from '../../lib/errors.js';
 import type { Ctx } from '../../lib/http.js';
 import { assertTransition } from '../../lib/stateMachine.js';
+import { assertVisitHappened } from '../appointments/appointments.service.js';
 import * as notifications from '../notifications/notifications.service.js';
 import * as providersRepo from '../providers/providers.repo.js';
 import * as requestsRepo from '../requests/requests.repo.js';
@@ -30,6 +31,8 @@ export async function create(ctx: Ctx, careRequestId: number, body: CreateReferr
     if (!receivingProvider) {
       throw AppError.badRequest('Receiving provider must be a verified provider');
     }
+    // Clinical governance: a specialist handoff follows an in-person assessment of this patient.
+    await assertVisitHappened(tx, careRequestId);
 
     const id = await repo.insert(tx, {
       care_request_id: careRequestId,

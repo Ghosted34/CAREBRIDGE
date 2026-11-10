@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { created, ctx, list, ok } from '../../lib/http.js';
-import { IdParam, Pagination, parse } from '../../lib/validate.js';
+import { IdParam, parse } from '../../lib/validate.js';
 import { allow, authenticate } from '../../middleware/auth.js';
-import { BookAppointmentBody } from './appointments.schema.js';
+import { BookAppointmentBody, MineQuery } from './appointments.schema.js';
 import * as service from './appointments.service.js';
 
 export const appointmentsRouter = Router();
@@ -12,8 +12,8 @@ appointmentsRouter.post('/appointments', authenticate, async (req, res) => {
 });
 
 appointmentsRouter.get('/appointments/mine', authenticate, async (req, res) => {
-  const page = parse(Pagination, req.query);
-  list(res, await service.listMine(ctx(req), page), page);
+  const q = parse(MineQuery, req.query);
+  list(res, await service.listMine(ctx(req), q, q.provider_id), q);
 });
 
 for (const verb of Object.keys(service.PROVIDER_ACTIONS) as service.ProviderAction[]) {

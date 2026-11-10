@@ -17,13 +17,21 @@ import {
 } from '../../components/ui';
 import { requestStatus, titleCase, urgency } from '../../lib/labels';
 import { formatDateTime } from '../../lib/time';
+import { useActiveClinic } from './activeClinic';
 import { useOfferableProviders } from './useOfferableProviders';
 
 export function QueuePage() {
   const { user } = useAuth();
   const isOps = user?.role !== 'provider_staff';
-  const queue = useQuery({ queryKey: ['requests', 'queue'], queryFn: () => api.queue() });
-  const offers = useQuery({ queryKey: ['offers', 'mine'], queryFn: api.myOffers });
+  const { clinicId } = useActiveClinic();
+  const queue = useQuery({
+    queryKey: ['requests', 'queue', clinicId],
+    queryFn: () => api.queue({ provider_id: clinicId }),
+  });
+  const offers = useQuery({
+    queryKey: ['offers', 'mine', clinicId],
+    queryFn: () => api.myOffers({ provider_id: clinicId }),
+  });
   const offeredIds = new Set((offers.data?.data ?? []).map((o) => o.care_request_id));
   const [target, setTarget] = useState<QueueItem | null>(null);
   const [sent, setSent] = useState<number | null>(null);
@@ -109,10 +117,12 @@ function OfferModal({
 }) {
   const queryClient = useQueryClient();
   const all = useOfferableProviders();
+  const { clinicId } = useActiveClinic();
   const providers = request
     ? all.filter((p) => !p.specialties || p.specialties.includes(request.specialty))
     : all;
-  const [providerId, setProviderId] = useState<number | ''>('');
+  // The clinic chosen in the topbar switcher is the default the offer is made on behalf of.
+  const [providerId, setProviderId] = useState<number | ''>(clinicId ?? '');
   const [message, setMessage] = useState('');
   const chosen = providerId || providers[0]?.id;
 

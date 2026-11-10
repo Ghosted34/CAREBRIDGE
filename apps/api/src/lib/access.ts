@@ -16,6 +16,20 @@ export async function memberProviderIds(db: Db, userId: number): Promise<number[
   return rows.map((r) => r.provider_id as number);
 }
 
+/** Owner of at least one verified, active clinic (platform staff always pass). */
+export async function assertOwnsAClinic(db: Db, user: AuthUser): Promise<void> {
+  if (isPlatformStaff(user)) return;
+  if (user.role !== 'provider_staff') throw AppError.forbidden();
+  const [rows] = await db.execute<Row[]>(
+    `SELECT pu.provider_id FROM provider_users pu
+       JOIN providers p ON p.id = pu.provider_id
+      WHERE pu.user_id = ? AND pu.provider_role = 'owner'
+        AND p.verification_status = 'verified' AND p.status = 'active' LIMIT 1`,
+    [user.id],
+  );
+  if (!rows[0]) throw AppError.forbidden('Only a verified clinic owner can do this');
+}
+
 /**
  * Throws 403 unless the user may act for `providerId`.
  * Operators/admins always may; provider staff need a membership with one of `roles`.

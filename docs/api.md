@@ -17,11 +17,29 @@ Health check: `GET /health` → `{ "status": "ok", "service": "CareBridge API" }
 
 | Method & path | Who | Body / query | Returns |
 |---|---|---|---|
-| `POST /auth/register` | public | `full_name, email, phone, password (≥10), role?: patient \| provider_staff, accept_terms: true, accept_privacy: true, marketing_opt_in?` | `201 { id, role, status }` — patients `active`, staff `pending` |
+| `POST /auth/register` | public | `full_name, email, phone, password (≥10), role?: patient \| provider_staff, clinic?, accept_terms: true, accept_privacy: true, marketing_opt_in?` | `201 { id, role, status, provider_id? }` — patients `active`, clinic sign-ups `pending` |
 | `POST /auth/login` | public | `email, password` | `{ token, user }`; `403 ACCOUNT_NOT_ACTIVE` if pending/suspended |
 | `GET /me` | any | — | profile + `memberships[]` for staff |
 
 Email fields ignore invisible characters (zero-width spaces etc. picked up when copying from chat apps) and are lower-cased.
+
+**Clinic self-registration.** A `provider_staff` may send `clinic: { legal_name, display_name, provider_type: 'clinic', registration_number, city, address, specialties[], services?[] }`.
+One transaction then creates the user (`pending`), the facility (`verification_status: pending`) and an `owner`
+membership, audited as `PROVIDER_SELF_REGISTERED`. `clinic` may only be sent by a `provider_staff`
+(`400 VALIDATION_ERROR` otherwise); a duplicate `registration_number` is `409 ALREADY_REGISTERED`. Staff who sign
+up **without** facility details keep the older flow: they stay `pending` until an admin links them to a provider.
+Nothing is published and a self-registered owner cannot sign in until an admin approves the facility
+(`POST /admin/providers/:id/verification`) **and** activates the account (`POST /admin/users/:id/status`) —
+after that the owner manages their own team (below).
+
+## Provider team (self-managed)
+
+| Method & path | Who | Body / query | Notes |
+|---|---|---|---|
+| `GET /providers/:id/team` | any member of that clinic, operator, admin | — | members with `provider_role`, account `status`. Works while the facility is still pending; `404` if you are not a member |
+| `POST /providers/:id/team` | `owner` of a **verified** clinic, operator, admin | `user_id, provider_role: clinician \| scheduler \| receptionist` | adds or re-roles a staff account and activates it if `pending` (they get `account_approved` + `team_invite`). `409 PROVIDER_NOT_VERIFIED` while the facility awaits verification; `409 NOT_PROVIDER_STAFF`, `409 ACCOUNT_SUSPENDED`, `409 SELF_CHANGE` |
+| `DELETE /providers/:id/team/:userId` | `owner` of a verified clinic, operator, admin | — | removes a member. `409 OWNER_CHANGE_FORBIDDEN` for an owner, `409 SELF_CHANGE` for yourself, `404` if they are not on the team |
+| `GET /staff-accounts` | `owner` of a verified clinic, operator, admin | `q` (2–190 chars, matched against name or email), paging | provider-staff accounts the clinic may invite — id, name, email, status only (no phone, no password hash) |
 
 ## Consents
 
@@ -50,22 +68,33 @@ copies are sent by the worker (`npm run worker`). Which events notify whom: [arc
 | Method & path | Who | Query | Notes |
 |---|---|---|---|
 | `GET /providers` | public | `specialty` (default `dentistry`), `city` (default `Lagos`), paging | Verified + active only; public fields only |
-| `GET /providers/:id` | public | — | 404 if not verified/active |
+| `GET /providers/:id` | public | — | 404 if not verified/active (a self-registered facility stays invisible until an admin verifies it) |
 
 ## Care requests
 
 | Method & path | Who | Body / query | Notes |
 |---|---|---|---|
-| `POST /requests` | patient | `specialty, service_type, description (10–4000), preferred_city?, urgency?: routine\|soon\|urgent, has_emergency_symptoms (required)` | `has_emergency_symptoms: true` → `422 EMERGENCY_REDIRECT` with guidance; nothing stored |
+| `POST /requests` | patient | `specialty, service_type, description (10–4000), preferred_city?, urgency?: routine\|soon\|urgent, has_emergency_symptoms (required), target_provider_id?` | `has_emergency_symptoms: true` → `422 EMERGENCY_REDIRECT` with guidance; nothing stored |
 | `GET /requests/mine` | patient | paging | own requests, newest first |
-| `GET /requests/queue` | staff, operator, admin | `specialty?`, paging | open requests (`submitted`/`matching`), most urgent first. Staff: only requests matching their verified providers' specialties and city |
-| `GET /requests/assigned` | staff, operator, admin | `status?`, paging | requests with a provider, incl. `patient_name`, `patient_phone`. Staff: only their providers |
-| `GET /requests/:id` | owner patient, related staff, operator, admin | — | 404 for anyone else |
+| `GET /requests/queue` | staff, operator, admin | `specialty?`, `provider_id?`, paging | open requests (`submitted`/`matching`), most urgent first. Staff: only requests matching their verified providers' specialties and city; `provider_id` narrows to one clinic you belong to (`403` otherwise) |
+| `GET /requests/assigned` | staff, operator, admin | `status?`, `provider_id?`, paging | requests with a provider, incl. `patient_name`, `patient_phone`, `assigned_provider` and `assessments_completed` (appointments where the patient was seen). Staff: only their providers |
+| `GET /requests/:id` | owner patient, related staff, operator, admin | — | includes `assigned_provider` (the clinic's display name, if any); 404 for anyone else |
 | `POST /requests/:id/cancel` | owner patient, operator, admin | — | expires open offers, cancels booked/confirmed appointments |
 | `POST /requests/:id/start-assessment` | owner/clinician of assigned provider, operator, admin | — | `provider_accepted → assessment` |
-| `POST /requests/:id/plan-treatment` | 〃 | — | `assessment → treatment_planned` |
-| `POST /requests/:id/start-treatment` | 〃 | — | `treatment_planned → in_progress` |
+| `POST /requests/:id/plan-treatment` | 〃 | — | `assessment → treatment_planned`; needs a visit first |
+| `POST /requests/:id/start-treatment` | 〃 | — | `treatment_planned → in_progress`; needs a visit first |
 | `POST /requests/:id/complete` | 〃 | — | `assessment` or `in_progress → completed` |
+
+**Directed requests.** `target_provider_id` sends the request straight to one clinic the patient chose in the
+public directory: it must be verified, active, accepting referrals and matching the specialty and city
+(`404 NOT_FOUND` otherwise, and no request is stored). The request is inserted as `submitted`, moved to
+`provider_accepted` through the state machine (audited as `CARE_REQUEST_ASSIGNED`), the clinic is told with
+`request_directed` and the open queue is not involved — no offer is made or needed.
+
+**Clinical governance: post-visit only.** Treatment planning, starting treatment, cost estimates and specialist
+referrals all require at least one appointment for that request that reached `checked_in` or `completed`.
+Before that they return `409 VISIT_REQUIRED` and write nothing. Booking an appointment, `start-assessment` and
+`complete` (no treatment needed) are not gated.
 
 ## Offers
 
@@ -73,7 +102,7 @@ copies are sent by the worker (`npm run worker`). Which events notify whom: [arc
 |---|---|---|---|
 | `POST /requests/:id/offers` | owner/clinician/scheduler of `provider_id`, operator, admin | `provider_id, message?` | request → `matching`; one offer per provider per request (`409 DUPLICATE_OFFER`) |
 | `GET /requests/:id/offers` | owner patient, operator, admin | — | all offers with provider name/address |
-| `GET /offers/mine` | staff, operator, admin | paging | offers made by the caller's providers (all, for ops) |
+| `GET /offers/mine` | staff, operator, admin | `provider_id?`, paging | offers made by the caller's providers (all, for ops); `provider_id` narrows to one clinic you belong to |
 | `POST /offers/:id/accept` | the requesting patient | — | assigns provider, request → `provider_accepted`, other open offers → `expired`. Does **not** book |
 | `POST /offers/:id/decline` | the requesting patient | — | |
 | `POST /offers/:id/withdraw` | offering provider (owner/clinician/scheduler), operator, admin | — | only while `offered` |
@@ -83,7 +112,7 @@ copies are sent by the worker (`npm run worker`). Which events notify whom: [arc
 | Method & path | Who | Body | Notes |
 |---|---|---|---|
 | `POST /appointments` | patient (own request), staff of the assigned provider, operator, admin | `care_request_id, starts_at, ends_at, appointment_type, slot_id?` | Overlap check or atomic slot claim. Serialised per provider |
-| `GET /appointments/mine` | any | paging | patient: own · staff: their providers' · ops: all |
+| `GET /appointments/mine` | any | `provider_id?`, paging | patient: own (always) · staff: their providers', or one clinic via `provider_id` · ops: all |
 | `POST /appointments/:id/confirm` | provider staff, operator, admin | — | `booked → confirmed` |
 | `POST /appointments/:id/check-in` | 〃 | — | `confirmed → checked_in` |
 | `POST /appointments/:id/complete` | 〃 | — | `checked_in → completed` |
@@ -101,13 +130,13 @@ copies are sent by the worker (`npm run worker`). Which events notify whom: [arc
 | Method & path | Who | Body / query | Notes |
 |---|---|---|---|
 | `GET /requests/:id/matches` | patient, staff, operator, admin | — | intelligent provider matching score (0-100) and breakdown |
-| `POST /requests/:id/referrals` | clinician/owner of assigned provider, operator, admin | `receiving_provider_id, referred_specialty, clinical_summary` | general dentist → specialist handoff |
+| `POST /requests/:id/referrals` | clinician/owner of assigned provider, operator, admin | `receiving_provider_id, referred_specialty, clinical_summary` | general dentist → specialist handoff; `409 VISIT_REQUIRED` before the patient has been seen |
 | `GET /requests/:id/referrals` | patient, related providers, operator, admin | — | referrals for request |
 | `GET /referrals/mine` | staff, operator, admin | `type?: incoming \| outgoing \| all, status?` | incoming/outgoing referrals |
 | `POST /referrals/:id/accept` | receiving clinician/owner, admin | — | `sent → accepted` |
 | `POST /referrals/:id/decline` | receiving clinician/owner, admin | — | `sent → declined` |
 | `POST /referrals/:id/complete` | receiving clinician/owner, admin | — | `accepted → completed` |
-| `POST /requests/:id/estimates` | assigned provider staff, operator, admin | `amount, currency?, inclusions?, exclusions?, valid_until?` | transparent cost estimate |
+| `POST /requests/:id/estimates` | assigned provider staff, operator, admin | `amount, currency?, inclusions?, exclusions?, valid_until?` | transparent cost estimate; `409 VISIT_REQUIRED` before the patient has been seen |
 | `GET /requests/:id/estimates` | patient, assigned provider, operator, admin | — | estimates for request |
 | `POST /estimates/:id/accept` | patient | — | `issued → accepted` |
 | `POST /estimates/:id/reject` | patient | — | `issued → rejected` |
@@ -155,8 +184,12 @@ copies are sent by the worker (`npm run worker`). Which events notify whom: [arc
 | 409 | `DUPLICATE_OFFER` | Provider already offered on this request |
 | 409 | `DUPLICATE_PROVIDER` | Registration number exists |
 | 409 | `NOT_PROVIDER_STAFF` | Only provider_staff can be linked to providers |
+| 409 | `PROVIDER_NOT_VERIFIED` | The clinic is still awaiting verification, so it cannot manage its team |
+| 409 | `ACCOUNT_SUSPENDED` | That staff account is suspended and cannot be added to a team |
+| 409 | `OWNER_CHANGE_FORBIDDEN` | A clinic's owner membership cannot be removed |
 | 409 | `SLOT_UNAVAILABLE` | Overlaps an existing appointment |
-| 409 | `SELF_CHANGE` | Admins can't change their own status |
+| 409 | `SELF_CHANGE` | Admins can't change their own status; staff can't remove themselves from their own clinic |
+| 409 | `VISIT_REQUIRED` | Estimate, referral or treatment planning before the patient has been seen |
 | 422 | `EMERGENCY_REDIRECT` | Emergency symptoms: call 112; request not stored |
 | 429 | `RATE_LIMITED` | Too many requests |
 | 500 | `INTERNAL` | Unexpected error (logged server-side) |

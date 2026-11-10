@@ -89,6 +89,76 @@ describe('care requests', () => {
     });
   });
 
+  describe('directed to a chosen clinic', () => {
+    it('assigns the clinic straight away and tells only that clinic', async () => {
+      const patient = await makeUser('patient');
+      const providerId = await makeProvider();
+      const staff = await makeStaff(providerId, 'owner');
+      const other = await makeStaff(await makeProvider(), 'owner');
+
+      const r = await api
+        .post('/api/v1/requests')
+        .set(patient.auth)
+        .send(requestBody({ target_provider_id: providerId }));
+      expect(r.status).toBe(201);
+      expect(r.body.data.status).toBe('provider_accepted');
+
+      const id = r.body.data.id as number;
+      const [providers] = await pool.query<Row[]>(
+        'SELECT display_name FROM providers WHERE id = ?',
+        [providerId],
+      );
+      const detail = await api.get(`/api/v1/requests/${id}`).set(patient.auth);
+      expect(detail.body.data).toMatchObject({
+        assigned_provider_id: providerId,
+        assigned_provider: providers[0]!.display_name,
+      });
+      expect(await auditActions('care_request', id)).toEqual([
+        'CARE_REQUEST_CREATED',
+        'CARE_REQUEST_ASSIGNED',
+      ]);
+      // The chosen clinic can book immediately; nobody else is told.
+      expect((await api.get('/api/v1/requests/assigned').set(staff.auth)).body.data).toHaveLength(
+        1,
+      );
+      expect((await api.get('/api/v1/requests/queue').set(staff.auth)).body.data).toEqual([]);
+      const chosenInbox = await api.get('/api/v1/notifications').set(staff.auth);
+      expect(chosenInbox.body.data.map((n: { type: string }) => n.type)).toContain(
+        'request_directed',
+      );
+      expect((await api.get('/api/v1/notifications').set(other.auth)).body.data).toEqual([]);
+    });
+
+    it('refuses clinics that are unverified, elsewhere, or do not offer the specialty', async () => {
+      const patient = await makeUser('patient');
+      const pending = await makeProvider({ verified: false });
+      const cardiology = await makeProvider({ specialties: ['cardiology'] });
+      const abuja = await makeProvider({ city: 'Abuja' });
+
+      for (const target_provider_id of [pending, cardiology, abuja, 999999]) {
+        const r = await api
+          .post('/api/v1/requests')
+          .set(patient.auth)
+          .send(requestBody({ target_provider_id }));
+        expect(r.status, String(target_provider_id)).toBe(404);
+        expect(r.body.error.code).toBe('NOT_FOUND');
+      }
+      const [rows] = await pool.query<Row[]>('SELECT COUNT(*) AS n FROM care_requests');
+      expect(rows[0]!.n).toBe(0);
+    });
+
+    it('still redirects emergencies even when a clinic was chosen', async () => {
+      const patient = await makeUser('patient');
+      const providerId = await makeProvider();
+      const r = await api
+        .post('/api/v1/requests')
+        .set(patient.auth)
+        .send(requestBody({ target_provider_id: providerId, has_emergency_symptoms: true }));
+      expect(r.status).toBe(422);
+      expect(r.body.error.code).toBe('EMERGENCY_REDIRECT');
+    });
+  });
+
   it('hides a request from other patients and unrelated staff (404)', async () => {
     const owner = await makeUser('patient');
     const id = await makeRequest(owner);

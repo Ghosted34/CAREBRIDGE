@@ -159,7 +159,8 @@ export async function listAuditLogs(
 export async function listStuckRequests(db: Db) {
   const [rows] = await db.query<Row[]>(
     `SELECT r.id, r.patient_user_id, u.full_name AS patient_name, u.email AS patient_email,
-            r.category, r.urgency, r.status, r.city, r.assigned_provider_id, p.display_name AS assigned_provider,
+            r.specialty AS category, r.urgency, r.status, r.preferred_city AS city,
+            r.assigned_provider_id, p.display_name AS assigned_provider,
             r.created_at, r.updated_at,
             TIMESTAMPDIFF(MINUTE, r.created_at, NOW()) AS age_minutes,
             (SELECT COUNT(*) FROM provider_offers po WHERE po.care_request_id = r.id) AS offers_count,

@@ -17,6 +17,15 @@ describe('RequireRole', () => {
     expect(screen.queryByText('secret provider screen')).not.toBeInTheDocument();
   });
 
+  it('remembers the full address, query string included, for after sign-in', () => {
+    renderApp(<RequireRole roles={['patient']}>new request</RequireRole>, {
+      route: '/patient/new?providerId=3',
+      auth: { user: null },
+    });
+    expect(screen.getByText('login page')).toBeInTheDocument();
+    expect(screen.getByTestId('login-from')).toHaveTextContent('/patient/new?providerId=3');
+  });
+
   it('renders for the right role, and waits while the session loads', () => {
     const { unmount } = renderApp(guarded, { route: '/provider', auth: { loading: true } });
     expect(screen.getByRole('status')).toHaveTextContent(/loading/i);

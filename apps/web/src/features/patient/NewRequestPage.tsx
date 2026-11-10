@@ -1,10 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link, useNavigate, useSearchParams } from 'react-router';
 import { ApiError } from '../../api/client';
 import { api } from '../../api/endpoints';
 import type { Urgency } from '../../api/types';
-import { Button, Card, ErrorNote, Field, PageHeader } from '../../components/ui';
+import { Button, Card, ErrorNote, Field, Notice, PageHeader } from '../../components/ui';
 
 const SERVICES = [
   'Toothache / pain assessment',
@@ -20,6 +20,10 @@ const SERVICES = [
 export function NewRequestPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  // Set when the patient tapped “Request care here” in the directory: the request goes to that
+  // clinic directly instead of the open queue.
+  const providerParam = Number(useSearchParams()[0].get('providerId'));
+  const providerId = Number.isInteger(providerParam) && providerParam > 0 ? providerParam : null;
   const [form, setForm] = useState({
     service_type: SERVICES[0]!,
     description: '',
@@ -32,6 +36,13 @@ export function NewRequestPage() {
   // Consents needed to share a request (data sharing, plus terms/privacy if their version changed).
   const policies = useQuery({ queryKey: ['policies'], queryFn: api.policies, staleTime: Infinity });
   const consents = useQuery({ queryKey: ['consents'], queryFn: api.myConsents });
+  const chosenClinic = useQuery({
+    queryKey: ['providers', providerId],
+    queryFn: () => api.provider(providerId!),
+    enabled: !!providerId,
+    retry: false,
+  });
+  const clinic = chosenClinic.data?.data;
   const required = new Set(
     (policies.data?.data ?? []).filter((p) => p.required_for_requests).map((p) => p.type),
   );
@@ -50,6 +61,7 @@ export function NewRequestPage() {
         ...form,
         specialty: 'dentistry',
         has_emergency_symptoms: emergency === true,
+        target_provider_id: clinic ? clinic.id : undefined,
       });
     },
     onSuccess: ({ data }) => {
@@ -90,8 +102,24 @@ export function NewRequestPage() {
     <>
       <PageHeader
         title="Request dental care"
-        subtitle="Verified Lagos providers will review your request and respond."
+        subtitle={
+          clinic
+            ? `Sent straight to ${clinic.display_name} — they will contact you to book.`
+            : 'Verified Lagos providers will review your request and respond.'
+        }
       />
+      {clinic && (
+        <Notice tone="info">
+          You chose <strong>{clinic.display_name}</strong>, {clinic.address}. They are the only
+          clinic that sees this request. <Link to="/providers">Choose a different clinic</Link>
+        </Notice>
+      )}
+      {providerId && !chosenClinic.isPending && !clinic && (
+        <Notice tone="warn">
+          That clinic isn’t available any more. Your request will go to every verified provider that
+          matches instead.
+        </Notice>
+      )}
       <Card>
         <form className="form" onSubmit={submit}>
           <fieldset>

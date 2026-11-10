@@ -73,6 +73,13 @@ export const TEMPLATES = {
     body: (p) => `Request #${p.request_id} matches ${p.provider}'s services.`,
     link: () => '/provider',
   },
+  request_directed: {
+    channels: ['in_app', 'email'],
+    title: () => 'A patient chose your clinic',
+    body: (p) =>
+      `Request #${p.request_id} was sent to ${p.provider} directly. Book their first appointment.`,
+    link: () => '/provider/patients',
+  },
   request_cancelled: {
     channels: ['in_app'],
     title: () => 'Request cancelled',
@@ -128,6 +135,12 @@ export const TEMPLATES = {
     title: () => 'Your CareBridge account is approved',
     body: () =>
       'You can now sign in. If you are linked to a clinic, matching requests will appear in your queue.',
+    link: () => '/provider',
+  },
+  team_invite: {
+    channels: ['in_app', 'email'],
+    title: () => 'You were added to a clinic team',
+    body: (p) => `${p.provider} added you to their CareBridge team as ${p.role}.`,
     link: () => '/provider',
   },
   referral_received: {

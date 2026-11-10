@@ -55,12 +55,19 @@ export async function expireOpenForRequest(db: Db, requestId: number, exceptOffe
   return r.affectedRows;
 }
 
-/** Offers made by the given providers (null = all), newest first, with request summary. */
-export async function listForProviders(db: Db, providerIds: number[] | null, page: Pagination) {
-  if (providerIds && providerIds.length === 0) return [];
-  const where = providerIds
-    ? `WHERE o.provider_id IN (${providerIds.map(() => '?').join(',')})`
-    : '';
+/**
+ * Offers made by the given providers (null = all), newest first, with request summary.
+ * `providerId` narrows to one clinic (the multi-clinic switcher); it wins over the list.
+ */
+export async function listForProviders(
+  db: Db,
+  providerIds: number[] | null,
+  page: Pagination,
+  providerId?: number,
+) {
+  if (providerId === undefined && providerIds && providerIds.length === 0) return [];
+  const ids = providerId !== undefined ? [providerId] : providerIds;
+  const where = ids ? `WHERE o.provider_id IN (${ids.map(() => '?').join(',')})` : '';
   const [rows] = await db.query<Row[]>(
     `SELECT o.id, o.care_request_id, o.provider_id, p.display_name AS provider, o.message, o.status,
             o.offered_at, o.responded_at, cr.specialty, cr.service_type, cr.urgency,
@@ -70,7 +77,7 @@ export async function listForProviders(db: Db, providerIds: number[] | null, pag
        JOIN care_requests cr ON cr.id = o.care_request_id
        ${where}
       ORDER BY o.offered_at DESC, o.id DESC LIMIT ? OFFSET ?`,
-    [...(providerIds ?? []), page.limit, page.offset],
+    [...(ids ?? []), page.limit, page.offset],
   );
   return rows;
 }

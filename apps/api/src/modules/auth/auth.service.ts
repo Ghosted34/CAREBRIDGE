@@ -14,17 +14,21 @@ import * as repo from './auth.repo.js';
 const DUMMY_HASH = bcrypt.hashSync('not-a-real-password', 10);
 
 export async function register(input: z.infer<typeof RegisterBody>, ip: string | null) {
-  const password_hash = await bcrypt.hash(input.password, env.BCRYPT_ROUNDS);
+  const { clinic, ...account } = input;
+  if (clinic && account.role !== 'provider_staff') {
+    throw AppError.badRequest('Facility details can only be registered by clinic / provider staff');
+  }
+  const password_hash = await bcrypt.hash(account.password, env.BCRYPT_ROUNDS);
   // Provider staff stay pending until an admin approves them and links them to a provider.
-  const status = input.role === 'provider_staff' ? 'pending' : 'active';
+  const status = account.role === 'provider_staff' ? 'pending' : 'active';
   try {
     return await withTransaction(async (tx) => {
       const id = await repo.insertUser(tx, {
-        full_name: input.full_name,
-        email: input.email,
-        phone: input.phone,
+        full_name: account.full_name,
+        email: account.email,
+        phone: account.phone,
         password_hash,
-        role: input.role,
+        role: account.role,
         status,
       });
       await audit(tx, {
@@ -33,16 +37,34 @@ export async function register(input: z.infer<typeof RegisterBody>, ip: string |
         entityType: 'user',
         entityId: id,
         ip,
-        metadata: { role: input.role },
+        metadata: { role: account.role },
       });
+      // Self-onboarding: the clinic is created pending review and this user becomes its owner,
+      // so they can manage their own team as soon as CareBridge verifies the facility.
+      let provider_id: number | undefined;
+      if (clinic) {
+        provider_id = await repo.insertPendingProvider(tx, clinic);
+        await repo.insertMembership(tx, provider_id, id, 'owner');
+        await audit(tx, {
+          actorUserId: id,
+          action: 'PROVIDER_SELF_REGISTERED',
+          entityType: 'provider',
+          entityId: provider_id,
+          ip,
+          metadata: { owner_user_id: id, verification_status: 'pending' },
+        });
+      }
       await consents.grant(tx, id, 'terms', 'registration', ip);
       await consents.grant(tx, id, 'privacy', 'registration', ip);
-      if (input.marketing_opt_in) await consents.grant(tx, id, 'marketing', 'registration', ip);
-      return { id, role: input.role, status };
+      if (account.marketing_opt_in) await consents.grant(tx, id, 'marketing', 'registration', ip);
+      return { id, role: account.role, status, provider_id };
     });
   } catch (err) {
     if ((err as { code?: string }).code === 'ER_DUP_ENTRY') {
-      throw AppError.conflict('ALREADY_REGISTERED', 'Email or phone already registered');
+      throw AppError.conflict(
+        'ALREADY_REGISTERED',
+        'Email, phone or facility registration number already registered',
+      );
     }
     throw err;
   }

@@ -11,10 +11,15 @@ import {
 } from '../../components/ui';
 import { offerStatus, titleCase, urgency } from '../../lib/labels';
 import { formatDateTime } from '../../lib/time';
+import { useActiveClinic } from './activeClinic';
 
 export function ProviderOffersPage() {
   const queryClient = useQueryClient();
-  const q = useQuery({ queryKey: ['offers', 'mine'], queryFn: api.myOffers });
+  const { clinicId } = useActiveClinic();
+  const q = useQuery({
+    queryKey: ['offers', 'mine', clinicId],
+    queryFn: () => api.myOffers({ provider_id: clinicId }),
+  });
   const withdraw = useMutation({
     mutationFn: (id: number) => api.withdrawOffer(id),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['offers'] }),

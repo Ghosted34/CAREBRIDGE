@@ -90,6 +90,41 @@ describe('appointments', () => {
     expect(c.body.data.status).toBe('confirmed');
   });
 
+  it('scopes /appointments/mine to one clinic, and refuses a clinic the caller is not in', async () => {
+    const mine = await acceptedRequest();
+    const other = await acceptedRequest();
+    await book(mine.patient.auth, mine.requestId);
+    await book(other.patient.auth, other.requestId);
+
+    const scoped = await api
+      .get(`/api/v1/appointments/mine?provider_id=${mine.providerId}`)
+      .set(mine.staff.auth);
+    expect(scoped.body.data).toHaveLength(1);
+    expect(scoped.body.data[0].provider_id).toBe(mine.providerId);
+    // Denied case: another clinic's diary is not reachable by guessing a provider id.
+    expect(
+      (
+        await api
+          .get(`/api/v1/appointments/mine?provider_id=${other.providerId}`)
+          .set(mine.staff.auth)
+      ).status,
+    ).toBe(403);
+    // Patients are scoped to themselves whatever they ask for.
+    const asPatient = await api
+      .get(`/api/v1/appointments/mine?provider_id=${mine.providerId}`)
+      .set(mine.patient.auth);
+    expect(asPatient.body.data).toHaveLength(1);
+    expect(asPatient.body.data[0].patient_name).toBeTypeOf('string');
+    const operator = await makeUser('operator');
+    expect(
+      (
+        await api
+          .get(`/api/v1/appointments/mine?provider_id=${other.providerId}`)
+          .set(operator.auth)
+      ).body.data,
+    ).toHaveLength(1);
+  });
+
   it('cancelling the request expires offers and cancels active appointments', async () => {
     const { patient, requestId } = await acceptedRequest();
     await book(patient.auth, requestId);

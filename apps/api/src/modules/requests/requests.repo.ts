@@ -13,18 +13,44 @@ export async function insert(
   },
 ) {
   const [res] = await db.execute<Result>(
-    `INSERT INTO care_requests(patient_user_id, specialty, service_type, description, preferred_city, urgency, status)
-     VALUES (?, ?, ?, ?, ?, ?, 'submitted')`,
-    [r.patient_user_id, r.specialty, r.service_type, r.description, r.preferred_city, r.urgency],
+    `INSERT INTO care_requests(patient_user_id, specialty, service_type, description, preferred_city,
+       urgency, status, assigned_provider_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      r.patient_user_id,
+      r.specialty,
+      r.service_type,
+      r.description,
+      r.preferred_city,
+      r.urgency,
+      // Directed requests (the patient picked a clinic) are inserted `submitted` and moved to
+      // `provider_accepted` by the service, so the state machine still owns the transition.
+      'submitted',
+      null,
+    ],
   );
   return res.insertId;
 }
 
+/** Verified, active provider that can take this request (same city, offers the specialty). */
+export async function findDirectTarget(db: Db, id: number, specialty: string, city: string) {
+  const [rows] = await db.execute<Row[]>(
+    `SELECT id, display_name FROM providers
+      WHERE id = ? AND verification_status = 'verified' AND status = 'active'
+        AND accepting_referrals = TRUE AND city = ?
+        AND JSON_CONTAINS(specialties, JSON_QUOTE(?))`,
+    [id, city, specialty],
+  );
+  return rows[0];
+}
+
 export async function findById(db: Db, id: number, opts: { forUpdate?: boolean } = {}) {
   const [rows] = await db.execute<Row[]>(
-    `SELECT id, patient_user_id, specialty, service_type, description, preferred_city, urgency,
-            status, assigned_provider_id, created_at, updated_at
-       FROM care_requests WHERE id = ?${opts.forUpdate ? ' FOR UPDATE' : ''}`,
+    `SELECT cr.id, cr.patient_user_id, cr.specialty, cr.service_type, cr.description,
+            cr.preferred_city, cr.urgency, cr.status, cr.assigned_provider_id,
+            p.display_name AS assigned_provider, cr.created_at, cr.updated_at
+       FROM care_requests cr LEFT JOIN providers p ON p.id = cr.assigned_provider_id
+      WHERE cr.id = ?${opts.forUpdate ? ' FOR UPDATE' : ''}`,
     [id],
   );
   return rows[0];
@@ -47,13 +73,20 @@ export async function listForPatient(db: Db, patientId: number, page: Pagination
  */
 export async function listQueue(
   db: Db,
-  f: { providerIds: number[] | null; specialty?: string } & Pagination,
+  f: { providerIds: number[] | null; providerId?: number; specialty?: string } & Pagination,
 ) {
   const where = [`cr.status IN ('submitted','matching')`];
   const params: unknown[] = [];
   if (f.specialty) {
     where.push('cr.specialty = ?');
     params.push(f.specialty);
+  }
+  if (f.providerId !== undefined) {
+    where.push(
+      `EXISTS (SELECT 1 FROM providers p WHERE p.id = ? AND p.city = cr.preferred_city
+         AND p.accepting_referrals = TRUE AND JSON_CONTAINS(p.specialties, JSON_QUOTE(cr.specialty)))`,
+    );
+    params.push(f.providerId);
   }
   if (f.providerIds) {
     if (f.providerIds.length === 0) return [];
@@ -98,13 +131,17 @@ export async function offeringProviderIds(db: Db, requestId: number) {
 /** Requests assigned to the given providers (null = all), with patient contact for coordination. */
 export async function listAssigned(
   db: Db,
-  f: { providerIds: number[] | null; status?: string } & Pagination,
+  f: { providerIds: number[] | null; providerId?: number; status?: string } & Pagination,
 ) {
   const where = ['cr.assigned_provider_id IS NOT NULL'];
   const params: unknown[] = [];
   if (f.status) {
     where.push('cr.status = ?');
     params.push(f.status);
+  }
+  if (f.providerId !== undefined) {
+    where.push('cr.assigned_provider_id = ?');
+    params.push(f.providerId);
   }
   if (f.providerIds) {
     if (f.providerIds.length === 0) return [];
@@ -114,7 +151,9 @@ export async function listAssigned(
   const [rows] = await db.query<Row[]>(
     `SELECT cr.id, cr.specialty, cr.service_type, cr.description, cr.preferred_city, cr.urgency,
             cr.status, cr.assigned_provider_id, p.display_name AS assigned_provider,
-            u.full_name AS patient_name, u.phone AS patient_phone, cr.created_at, cr.updated_at
+            u.full_name AS patient_name, u.phone AS patient_phone, cr.created_at, cr.updated_at,
+            (SELECT COUNT(*) FROM appointments ap WHERE ap.care_request_id = cr.id
+               AND ap.status IN ('checked_in','completed')) AS assessments_completed
        FROM care_requests cr
        JOIN providers p ON p.id = cr.assigned_provider_id
        JOIN users u ON u.id = cr.patient_user_id
