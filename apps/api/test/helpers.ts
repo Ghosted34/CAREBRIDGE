@@ -177,6 +177,12 @@ export async function acceptedRequest() {
       `acceptedRequest booking failed: ${booked.status} ${JSON.stringify(booked.body)}`,
     );
   const apptId = booked.body.data.id as number;
+  // Transition to provider_accepted so the request is not treated as an open
+  // request (it has been accepted by the chosen provider).
+  await pool.execute('UPDATE care_requests SET status = ? WHERE id = ?', [
+    'provider_accepted',
+    requestId,
+  ]);
   return { patient, providerId, staff, requestId, apptId };
 }
 
