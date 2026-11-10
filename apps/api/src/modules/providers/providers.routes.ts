@@ -98,9 +98,16 @@ providersRouter.get(
 providersRouter.get(
   '/providers/:id/centres',
   authenticate,
-  allow('provider_staff', 'operator', 'admin'),
+  allow('provider_staff', 'operator', 'admin', 'patient'),
   async (req, res) => {
-    ok(res, await service.listCentres(ctx(req), parse(IdParam, req.params).id));
+    ok(
+      res,
+      await service.listCentres(
+        ctx(req),
+        parse(IdParam, req.params).id,
+        z.coerce.number().int().positive().optional().parse(req.query.care_request_id),
+      ),
+    );
   },
 );
 
@@ -135,9 +142,16 @@ providersRouter.put(
 providersRouter.get(
   '/providers/:id/caregivers',
   authenticate,
-  allow('provider_staff', 'operator', 'admin'),
+  allow('provider_staff', 'operator', 'admin', 'patient'),
   async (req, res) => {
-    ok(res, await service.listCaregivers(ctx(req), parse(IdParam, req.params).id));
+    ok(
+      res,
+      await service.listCaregivers(
+        ctx(req),
+        parse(IdParam, req.params).id,
+        z.coerce.number().int().positive().optional().parse(req.query.care_request_id),
+      ),
+    );
   },
 );
 

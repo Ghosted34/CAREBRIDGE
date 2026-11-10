@@ -6,6 +6,7 @@ import { AppError } from '../../lib/errors.js';
 import type { Ctx } from '../../lib/http.js';
 import type { AuthUser } from '../../types.js';
 import * as notifications from '../notifications/notifications.service.js';
+import * as requestsRepo from '../requests/requests.repo.js';
 import type {
   AddTeamMemberBody,
   CreateCaregiverBody,
@@ -161,9 +162,18 @@ export async function searchStaff(c: Ctx, q: z.infer<typeof SearchStaffQuery>) {
   return repo.searchStaffAccounts(pool, q.q, q.limit);
 }
 
-/** Clinic owner lists the operating centres of their facility. */
-export async function listCentres(c: Ctx, providerId: number) {
-  await assertOwner(pool, c.user, providerId);
+/** Clinic owner lists the operating centres of their facility.
+ * Patients may read centres for a provider they have an open care request with. */
+export async function listCentres(c: Ctx, providerId: number, careRequestId?: number) {
+  if (c.user.role === 'patient') {
+    if (!careRequestId) throw AppError.forbidden('Care request required');
+    const request = await requestsRepo.findById(pool, careRequestId);
+    if (!request || request.patient_user_id !== c.user.id) throw AppError.notFound('Care request');
+    if (!['submitted', 'matching'].includes(request.status))
+      throw AppError.forbidden('Cannot view centres for this request');
+  } else {
+    await assertOwner(pool, c.user, providerId);
+  }
   const provider = await repo.findProvider(pool, providerId);
   if (!provider) throw AppError.notFound('Provider');
   return repo.listCentres(pool, providerId);
@@ -228,9 +238,18 @@ export async function updateCentre(
   });
 }
 
-/** Clinic owner lists caregivers at a centre. */
-export async function listCaregivers(c: Ctx, providerId: number) {
-  await assertOwner(pool, c.user, providerId);
+/** Clinic owner lists caregivers at a centre.
+ * Patients may read caregivers for a provider they have an open care request with. */
+export async function listCaregivers(c: Ctx, providerId: number, careRequestId?: number) {
+  if (c.user.role === 'patient') {
+    if (!careRequestId) throw AppError.forbidden('Care request required');
+    const request = await requestsRepo.findById(pool, careRequestId);
+    if (!request || request.patient_user_id !== c.user.id) throw AppError.notFound('Care request');
+    if (!['submitted', 'matching'].includes(request.status))
+      throw AppError.forbidden('Cannot view caregivers for this request');
+  } else {
+    await assertOwner(pool, c.user, providerId);
+  }
   const provider = await repo.findProvider(pool, providerId);
   if (!provider) throw AppError.notFound('Provider');
   return repo.listCaregivers(pool, providerId);

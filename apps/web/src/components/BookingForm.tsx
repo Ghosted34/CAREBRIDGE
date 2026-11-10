@@ -54,9 +54,11 @@ export function BookingForm({
   });
 
   const { data: centres, isPending: centresPending } = useQuery({
-    queryKey: ['centres', selectedProvider?.provider_id],
+    queryKey: ['centres', selectedProvider?.provider_id, careRequestId],
     queryFn: () =>
-      selectedProvider ? api.centres(selectedProvider.provider_id) : Promise.resolve({ data: [] }),
+      selectedProvider
+        ? api.centres(selectedProvider.provider_id, careRequestId)
+        : Promise.resolve({ data: [] }),
     enabled: Boolean(selectedProvider),
   });
 
@@ -74,10 +76,10 @@ export function BookingForm({
   });
 
   const { data: caregivers } = useQuery({
-    queryKey: ['caregivers', selectedProvider?.provider_id],
+    queryKey: ['caregivers', selectedProvider?.provider_id, careRequestId],
     queryFn: () =>
       selectedProvider
-        ? api.caregivers(selectedProvider.provider_id)
+        ? api.caregivers(selectedProvider.provider_id, careRequestId)
         : Promise.resolve({ data: [] }),
     enabled: Boolean(selectedProvider),
   });

@@ -202,7 +202,10 @@ export const api = {
   ) => get<Envelope<ProviderSlot[]>>(`/centres/${centreId}/slots${qs(query)}`),
 
   // operating centres (owner-managed)
-  centres: (providerId: number) => get<Envelope<Centre[]>>(`/providers/${providerId}/centres`),
+  centres: (providerId: number, careRequestId?: number) =>
+    get<Envelope<Centre[]>>(
+      `/providers/${providerId}/centres${qs({ care_request_id: careRequestId })}`,
+    ),
   createCentre: (
     providerId: number,
     body: {
@@ -229,8 +232,10 @@ export const api = {
   ) => post<Envelope<Centre>>(`/providers/${providerId}/centres/${centreId}`, body),
 
   // caregivers (owner-managed)
-  caregivers: (providerId: number) =>
-    get<Envelope<Caregiver[]>>(`/providers/${providerId}/caregivers`),
+  caregivers: (providerId: number, careRequestId?: number) =>
+    get<Envelope<Caregiver[]>>(
+      `/providers/${providerId}/caregivers${qs({ care_request_id: careRequestId })}`,
+    ),
   createCaregiver: (
     providerId: number,
     body: {
