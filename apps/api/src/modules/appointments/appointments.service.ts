@@ -114,7 +114,7 @@ export async function book(c: Ctx, input: z.infer<typeof BookAppointmentBody>) {
       'scheduler',
       'receptionist',
     ]);
-    await notifications.notify(tx, staff, 'appointment_requested_provider', notice);
+    await notifications.notify(tx, staff, 'appointment_booked_provider', notice);
 
     return { id, provider_id: providerId, status: 'requested' };
   });
@@ -274,7 +274,7 @@ export async function updateRequestProvider(
       'scheduler',
       'receptionist',
     ]);
-    await notifications.notify(tx, staff, 'appointment_requested_provider', notice);
+    await notifications.notify(tx, staff, 'appointment_booked_provider', notice);
 
     return { id, provider_id: providerId, status: 'requested' };
   });
