@@ -1,188 +1,135 @@
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
-import {
-  callsTo,
-  consentsFixture,
-  mockApi,
-  patientUser,
-  POLICIES_FIXTURE,
-  renderApp,
-} from '../../test/utils';
+import { callsTo, consentsFixture, mockApi, patientUser, renderApp } from '../../test/utils';
 import { NewRequestPage } from './NewRequestPage';
 
-const render = () =>
-  renderApp(<NewRequestPage />, { route: '/patient/new', auth: { user: patientUser } });
+const POLICIES_FIXTURE = [
+  {
+    type: 'terms',
+    version: 'v1',
+    title: 'Terms of use',
+    summary: 'Terms summary.',
+    required_at_registration: true,
+    required_for_requests: true,
+  },
+  {
+    type: 'privacy',
+    version: 'v1',
+    title: 'Privacy notice',
+    summary: 'Privacy summary.',
+    required_at_registration: true,
+    required_for_requests: true,
+  },
+  {
+    type: 'data_sharing',
+    version: 'v1',
+    title: 'Sharing your request with providers',
+    summary: 'We share your request with verified providers.',
+    required_at_registration: false,
+    required_for_requests: true,
+  },
+];
+
 const ALL_GRANTED = consentsFixture({ terms: true, privacy: true, data_sharing: true });
-const base = (consents = ALL_GRANTED) => ({
+
+const baseMatches = (careRequestId: number, providers = []) => ({
   'GET /consents/policies': { body: { data: POLICIES_FIXTURE } },
-  'GET /consents': { body: { data: consents } },
+  'GET /consents': { body: { data: ALL_GRANTED } },
+  [`GET /requests/${careRequestId}/matches`]: { body: { data: providers } },
 });
 
-async function fillAndSend(answer: 'Yes' | 'No', text = 'Lower molar pain for three days') {
-  await userEvent.click(screen.getByLabelText(answer));
-  await userEvent.type(screen.getByLabelText('Describe the problem'), text);
-  await userEvent.click(screen.getByRole('button', { name: 'Send request' }));
+async function fillAndSend(problem = 'Toothache / pain', date = '2026-11-15') {
+  await userEvent.selectOptions(screen.getByLabelText("What's the problem?"), problem);
+  await userEvent.clear(screen.getByLabelText('Preferred date'));
+  await userEvent.type(screen.getByLabelText('Preferred date'), date);
+  await userEvent.click(screen.getByRole('button', { name: 'Find clinics' }));
 }
 
 describe('NewRequestPage', () => {
-  it('requires the emergency question before sending', async () => {
-    mockApi(base());
-    render();
-    await screen.findByLabelText('No');
-    expect(screen.getByRole('button', { name: 'Send request' })).toBeDisabled();
-    await userEvent.click(screen.getByLabelText('No'));
-    expect(await screen.findByRole('button', { name: 'Send request' })).toBeEnabled();
+  it('renders the simplified 2-input form', async () => {
+    mockApi(baseMatches(42));
+    renderApp(<NewRequestPage />, { route: '/patient/new', auth: { user: patientUser } });
+    expect(await screen.findByLabelText("What's the problem?")).toBeInTheDocument();
+    expect(screen.getByLabelText('Preferred date')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Find clinics' })).toBeDisabled();
   });
 
-  it('shows emergency guidance from the API instead of queueing the request', async () => {
+  it('enables Find clinics only after a date is chosen', async () => {
+    mockApi(baseMatches(42));
+    renderApp(<NewRequestPage />, { route: '/patient/new', auth: { user: patientUser } });
+    expect(screen.getByRole('button', { name: 'Find clinics' })).toBeDisabled();
+    await userEvent.clear(screen.getByLabelText('Preferred date'));
+    await userEvent.type(screen.getByLabelText('Preferred date'), '2026-11-15');
+    expect(screen.getByRole('button', { name: 'Find clinics' })).toBeEnabled();
+  });
+
+  it('creates a request and transitions to clinic matching', async () => {
     const fetchFn = mockApi({
-      ...base(),
-      'POST /requests': {
-        status: 422,
-        body: {
-          error: {
-            code: 'EMERGENCY_REDIRECT',
-            message: 'Please call 112 now. CareBridge cannot handle emergencies.',
-          },
-        },
-      },
-    });
-    render();
-    await screen.findByLabelText('Yes');
-    await fillAndSend('Yes', 'Face swelling fast since morning');
-    expect(await screen.findByRole('heading', { name: /emergency help/i })).toBeInTheDocument();
-    expect(screen.getByText(/CareBridge cannot handle emergencies/)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Call 112' })).toHaveAttribute('href', 'tel:112');
-    expect(callsTo(fetchFn, 'POST /requests')[0]).toMatchObject({
-      has_emergency_symptoms: true,
-      specialty: 'dentistry',
-    });
-  });
-
-  it('sends a routine request and opens it', async () => {
-    mockApi({
-      ...base(),
+      ...baseMatches(42),
       'POST /requests': { status: 201, body: { data: { id: 42, status: 'submitted' } } },
     });
-    render();
-    await screen.findByLabelText('No');
-    await fillAndSend('No');
-    expect(await screen.findByText('request page')).toBeInTheDocument();
-  });
-
-  it('asks for data-sharing consent when missing and records it before sending', async () => {
-    const fetchFn = mockApi({
-      ...base(consentsFixture({ terms: true, privacy: true })),
-      'POST /consents': { body: { data: { consents: ALL_GRANTED, withdrawn_requests: [] } } },
-      'POST /requests': { status: 201, body: { data: { id: 7, status: 'submitted' } } },
-    });
-    render();
-    expect(
-      await screen.findByRole('heading', { name: 'Before we share your request' }),
-    ).toBeInTheDocument();
-    await userEvent.click(screen.getByLabelText('No'));
-    await userEvent.type(
-      screen.getByLabelText('Describe the problem'),
-      'Lower molar pain for three days',
-    );
-    expect(screen.getByRole('button', { name: 'Send request' })).toBeDisabled();
-    await userEvent.click(screen.getByLabelText(/I agree/));
-    await userEvent.click(screen.getByRole('button', { name: 'Send request' }));
-    expect(await screen.findByText('request page')).toBeInTheDocument();
-    expect(callsTo(fetchFn, 'POST /consents')).toEqual([
-      { consent_type: 'data_sharing', granted: true, source: 'request_form' },
-    ]);
-    const order = fetchFn.mock.calls
-      .map(([u, i]) => `${i?.method ?? 'GET'} ${u}`)
-      .filter((k) => k.startsWith('POST'));
-    expect(order).toEqual(['POST /api/v1/consents', 'POST /api/v1/requests']);
-  });
-
-  it('never records consent on the emergency path', async () => {
-    const fetchFn = mockApi({
-      ...base(consentsFixture({ terms: true, privacy: true })),
-      'POST /requests': {
-        status: 422,
-        body: { error: { code: 'EMERGENCY_REDIRECT', message: 'Call 112.' } },
-      },
-    });
-    render();
-    await screen.findByLabelText('Yes');
-    await fillAndSend('Yes');
-    await screen.findByRole('heading', { name: /emergency help/i });
-    expect(callsTo(fetchFn, 'POST /consents')).toEqual([]);
-  });
-
-  it('sends a directory request straight to the chosen clinic', async () => {
-    const fetchFn = mockApi({
-      ...base(),
-      'GET /providers/3': {
-        body: {
-          data: {
-            id: 3,
-            display_name: 'Ikeja Dental',
-            provider_type: 'clinic',
-            city: 'Lagos',
-            address: '12 Awolowo Road, Ikeja',
-            specialties: ['dentistry'],
-            services: null,
-            accepting_referrals: true,
-          },
-        },
-      },
-      'POST /requests': {
-        status: 201,
-        body: { data: { id: 44, status: 'provider_accepted' } },
-      },
-    });
-    renderApp(<NewRequestPage />, {
-      route: '/patient/new?providerId=3',
-      auth: { user: patientUser },
-    });
-    expect(await screen.findByText(/You chose/)).toBeInTheDocument();
-    expect(screen.getByText('Ikeja Dental')).toBeInTheDocument();
-    await fillAndSend('No');
-    expect(await screen.findByText('request page')).toBeInTheDocument();
+    renderApp(<NewRequestPage />, { route: '/patient/new', auth: { user: patientUser } });
+    await fillAndSend();
+    // BookingForm provider step renders a unique back button
+    await screen.findByText('← Change problem or date');
     expect(callsTo(fetchFn, 'POST /requests')[0]).toMatchObject({
-      target_provider_id: 3,
       specialty: 'dentistry',
+      service_type: 'Toothache / pain',
+      description: 'Toothache / pain',
+      preferred_city: 'Lagos',
+      urgency: 'routine',
       has_emergency_symptoms: false,
     });
   });
 
-  it('falls back to open matching when the chosen clinic is gone', async () => {
-    const fetchFn = mockApi({
-      ...base(),
-      'GET /providers/9': { status: 404, body: { error: { code: 'NOT_FOUND', message: 'x' } } },
-      'POST /requests': { status: 201, body: { data: { id: 45, status: 'submitted' } } },
-    });
-    renderApp(<NewRequestPage />, {
-      route: '/patient/new?providerId=9',
-      auth: { user: patientUser },
-    });
-    expect(await screen.findByText(/isn’t available any more/)).toBeInTheDocument();
-    await fillAndSend('No');
-    expect(callsTo(fetchFn, 'POST /requests')[0]).not.toHaveProperty('target_provider_id');
-  });
-
-  it('shows field errors returned by the API', async () => {
+  it('shows the API error when request creation fails', async () => {
     mockApi({
-      ...base(),
+      ...baseMatches(42),
       'POST /requests': {
         status: 400,
         body: {
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: 'Invalid request',
-            details: { fieldErrors: { description: ['Too short'] } },
-          },
+          error: { code: 'VALIDATION_ERROR', message: 'Invalid request', details: {} },
         },
       },
     });
-    render();
-    await screen.findByLabelText('No');
-    await fillAndSend('No', 'x');
-    expect(await screen.findByText('Too short')).toBeInTheDocument();
+    renderApp(<NewRequestPage />, { route: '/patient/new', auth: { user: patientUser } });
+    await fillAndSend();
+    expect(await screen.findByRole('alert')).toHaveTextContent('Invalid request');
+  });
+
+  it('records missing data-sharing consent before sending the request', async () => {
+    const consentOnly = consentsFixture({ terms: true, privacy: true });
+    const fetchFn = mockApi({
+      'GET /consents/policies': { body: { data: POLICIES_FIXTURE } },
+      'GET /consents': { body: { data: consentOnly } },
+      'POST /consents': { body: { data: { consents: ALL_GRANTED, withdrawn_requests: [] } } },
+      'POST /requests': { status: 201, body: { data: { id: 7, status: 'submitted' } } },
+      'GET /requests/7/matches': { body: { data: [] } },
+    });
+    renderApp(<NewRequestPage />, { route: '/patient/new', auth: { user: patientUser } });
+    await fillAndSend();
+    await screen.findByText('← Change problem or date');
+    expect(callsTo(fetchFn, 'POST /consents')).toEqual([
+      { consent_type: 'data_sharing', granted: true, source: 'request_form' },
+    ]);
+    const postOrder = fetchFn.mock.calls
+      .map(([u, i]) => `${i?.method ?? 'GET'} ${u}`)
+      .filter((k) => k.startsWith('POST'));
+    expect(postOrder).toEqual(['POST /api/v1/consents', 'POST /api/v1/requests']);
+  });
+
+  it('submits normally when all consents are already granted', async () => {
+    const fetchFn = mockApi({
+      ...baseMatches(42),
+      'POST /requests': { status: 201, body: { data: { id: 42, status: 'submitted' } } },
+    });
+    renderApp(<NewRequestPage />, { route: '/patient/new', auth: { user: patientUser } });
+    await fillAndSend();
+    await screen.findByText('← Change problem or date');
+    expect(callsTo(fetchFn, 'POST /requests')[0]).toMatchObject({
+      specialty: 'dentistry',
+      service_type: 'Toothache / pain',
+    });
   });
 });

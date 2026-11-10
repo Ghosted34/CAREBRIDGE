@@ -27,15 +27,21 @@ type Step = 'problem' | 'provider' | 'centre' | 'slot' | 'confirm';
 export function BookingForm({
   careRequestId,
   onBooked,
+  defaultProblem,
+  defaultDate,
 }: {
   careRequestId: number;
   onBooked?: () => void;
+  defaultProblem?: string;
+  defaultDate?: string;
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [step, setStep] = useReactState<Step>('problem');
-  const [problem, setProblem] = useReactState<string>(PROBLEMS[0]!);
-  const [date, setDate] = useReactState<string>('');
+  const [step, setStep] = useReactState<Step>(
+    defaultProblem && defaultDate ? 'provider' : 'problem',
+  );
+  const [problem, setProblem] = useReactState<string>(defaultProblem ?? PROBLEMS[0]!);
+  const [date, setDate] = useReactState<string>(defaultDate ?? '');
   const [selectedProvider, setSelectedProvider] = useReactState<MatchingProvider | null>(null);
   const [selectedCentre, setSelectedCentre] = useReactState<Centre | null>(null);
   const [selectedSlot, setSelectedSlot] = useReactState<ProviderSlot | null>(null);
