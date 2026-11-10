@@ -25,15 +25,15 @@ type Step = 'problem' | 'provider' | 'centre' | 'slot' | 'confirm';
  * confirms or declines. No offer/bidding round.
  */
 export function BookingForm({
-  careRequestId,
   onBooked,
-  onCancel,
+  careRequestId,
   defaultProblem,
   defaultDate,
 }: {
-  careRequestId: number;
   onBooked?: () => void;
-  onCancel?: () => void;
+  /** Existing care request ID — when provided (e.g. from request detail page), the request
+   * already exists and we skip creating a new one at confirm time. */
+  careRequestId?: number;
   defaultProblem?: string;
   defaultDate?: string;
 }) {
@@ -48,19 +48,50 @@ export function BookingForm({
   const [selectedCentre, setSelectedCentre] = useReactState<Centre | null>(null);
   const [selectedSlot, setSelectedSlot] = useReactState<ProviderSlot | null>(null);
   const [selectedCaregiver, setSelectedCaregiver] = useReactState<number | null>(null);
+  const [createdRequestId, setCreatedRequestId] = useReactState<number | null>(null);
+
+  const policies = useQuery({ queryKey: ['policies'], queryFn: api.policies, staleTime: Infinity });
+  const consents = useQuery({ queryKey: ['consents'], queryFn: api.myConsents });
+
+  const activeRequestId = careRequestId ?? createdRequestId;
 
   const { data: providers, isPending: matchingPending } = useQuery({
-    queryKey: ['matches', careRequestId],
-    queryFn: () => api.matchesForRequest(careRequestId),
+    queryKey: ['matches', activeRequestId ?? problem],
+    queryFn: async () => {
+      if (activeRequestId) {
+        return api.matchesForRequest(activeRequestId);
+      }
+      // No care request yet (NewRequestPage flow): match providers from the
+      // public directory by specialty + city. No request is created until confirm.
+      const result = await api.providers({ specialty: problem, city: 'Lagos' });
+      return {
+        data: result.data.map((p) => ({
+          provider_id: p.id,
+          display_name: p.display_name,
+          city: p.city,
+          address: p.address,
+          specialties: p.specialties,
+          score: {
+            total: 100,
+            tier: 'good' as const,
+            breakdown: {
+              clinical_fit: 40,
+              verification: 20,
+              location_fit: 20,
+              availability: 10,
+              performance: 10,
+            },
+          },
+        })),
+      };
+    },
     enabled: step === 'provider' && date !== '',
   });
 
   const { data: centres, isPending: centresPending } = useQuery({
-    queryKey: ['centres', selectedProvider?.provider_id, careRequestId],
+    queryKey: ['centres', selectedProvider?.provider_id],
     queryFn: () =>
-      selectedProvider
-        ? api.centres(selectedProvider.provider_id, careRequestId)
-        : Promise.resolve({ data: [] }),
+      selectedProvider ? api.centres(selectedProvider.provider_id) : Promise.resolve({ data: [] }),
     enabled: Boolean(selectedProvider),
   });
 
@@ -78,56 +109,76 @@ export function BookingForm({
   });
 
   const { data: caregivers } = useQuery({
-    queryKey: ['caregivers', selectedProvider?.provider_id, careRequestId],
+    queryKey: ['caregivers', selectedProvider?.provider_id],
     queryFn: () =>
-      selectedProvider
-        ? api.caregivers(selectedProvider.provider_id, careRequestId)
-        : Promise.resolve({ data: [] }),
+      selectedProvider ? api.caregivers(selectedProvider.provider_id) : Promise.resolve({ data: [] }),
     enabled: Boolean(selectedProvider),
   });
 
   const book = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       if (!selectedProvider || !selectedCentre || !selectedSlot) {
         throw new Error('Provider, centre and slot required');
       }
       if (!selectedCentre.id) {
         throw new Error('Centre is missing an ID');
       }
-      const body: {
-        care_request_id: number;
-        provider_id: number;
-        centre_id: number;
-        starts_at: string;
-        ends_at: string;
-        appointment_type: 'assessment';
-        appointment_mode: 'physical';
-        caregiver_id?: number;
-      } = {
-        care_request_id: careRequestId,
-        provider_id: selectedProvider.provider_id,
-        centre_id: selectedCentre.id,
-        starts_at: selectedSlot.start_time,
-        ends_at: selectedSlot.end_time,
-        appointment_type: 'assessment',
-        appointment_mode: 'physical',
-      };
-      if (selectedCaregiver) body.caregiver_id = selectedCaregiver;
-      return api.book(body);
+
+      let crId = activeRequestId;
+
+      // If no existing care request (flow started from NewRequestPage), create one now
+      // — only at confirm time, never before.
+      if (!crId) {
+        // Record consents needed to share the request (data sharing, terms, privacy).
+        const required = new Set(
+          (policies.data?.data ?? []).filter((p) => p.required_for_requests).map((p) => p.type),
+        );
+        const missing = (consents.data?.data ?? []).filter(
+          (c) => required.has(c.type) && !c.up_to_date,
+        );
+        for (const m of missing) await api.decideConsent(m.type, true, 'request_form');
+
+        const request = await api.createRequest({
+          specialty: 'dentistry',
+          service_type: problem,
+          description: problem,
+          preferred_city: 'Lagos',
+          urgency: 'routine',
+          has_emergency_symptoms: false,
+          target_provider_id: selectedProvider.provider_id,
+        });
+        crId = request.data.id;
+        setCreatedRequestId(crId);
+      }
+
+      try {
+        return await api.book({
+          care_request_id: crId,
+          provider_id: selectedProvider.provider_id,
+          centre_id: selectedCentre.id,
+          starts_at: selectedSlot.start_time,
+          ends_at: selectedSlot.end_time,
+          appointment_type: 'assessment',
+          appointment_mode: 'physical',
+          caregiver_id: selectedCaregiver ?? undefined,
+        });
+      } catch (err) {
+        // Booking failed — if we created the request just now, cancel it so no
+        // incomplete request lingers.
+        if (!careRequestId) {
+          await api.cancelRequest(crId);
+          setCreatedRequestId(null);
+        }
+        throw err;
+      }
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['appointments'] });
       void queryClient.invalidateQueries({ queryKey: ['matches'] });
-      onBooked?.();
-      navigate(`/patient/requests/${careRequestId}`, { replace: true });
-    },
-  });
-
-  const cancelRequest = useMutation({
-    mutationFn: () => api.cancelRequest(careRequestId),
-    onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['requests'] });
-      onCancel?.();
+      void queryClient.invalidateQueries({ queryKey: ['consents'] });
+      onBooked?.();
+      navigate(`/patient/requests/${activeRequestId}`, { replace: true });
     },
   });
 
@@ -393,11 +444,8 @@ export function BookingForm({
             <Button
               type="button"
               variant="ghost"
-              onClick={() => {
-                cancelRequest.mutate();
-                setStep('problem');
-              }}
-              busy={book.isPending || cancelRequest.isPending}
+              onClick={() => setStep('problem')}
+              busy={book.isPending}
             >
               Start over
             </Button>

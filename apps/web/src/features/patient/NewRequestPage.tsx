@@ -1,7 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
-import { api } from '../../api/endpoints';
 import { BookingForm } from '../../components/BookingForm';
 import { Button, Card, ErrorNote, Field, PageHeader } from '../../components/ui';
 
@@ -19,71 +17,32 @@ const PROBLEMS = [
 /**
  * Simplified request page: patient submits 2 inputs (problem + date), then is
  * taken straight to clinic matching → centre → slot → caregiver → booking request.
+ * No care request is created until the patient clicks "Send booking request"
+ * at the end of the booking flow — no incomplete requests are left behind.
  * No emergency triage, no urgency, no free-text description, no offer round.
  */
 export function NewRequestPage() {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const [problem, setProblem] = useState<string>(PROBLEMS[0]!);
   const [date, setDate] = useState<string>('');
   const [showBooking, setShowBooking] = useState(false);
-  const [careRequestId, setCareRequestId] = useState<number | null>(null);
-
-  const policies = useQuery({ queryKey: ['policies'], queryFn: api.policies, staleTime: Infinity });
-  const consents = useQuery({ queryKey: ['consents'], queryFn: api.myConsents });
-
-  const create = useMutation({
-    mutationFn: async () => {
-      // Record consents needed to share the request (data sharing, terms, privacy).
-      const required = new Set(
-        (policies.data?.data ?? []).filter((p) => p.required_for_requests).map((p) => p.type),
-      );
-      const missing = (consents.data?.data ?? []).filter(
-        (c) => required.has(c.type) && !c.up_to_date,
-      );
-      for (const m of missing) await api.decideConsent(m.type, true, 'request_form');
-
-      return api.createRequest({
-        specialty: 'dentistry',
-        service_type: problem,
-        description: problem,
-        preferred_city: 'Lagos',
-        urgency: 'routine',
-        has_emergency_symptoms: false,
-      });
-    },
-    onSuccess: ({ data }) => {
-      setCareRequestId(data.id);
-      setShowBooking(true);
-      void queryClient.invalidateQueries({ queryKey: ['requests'] });
-      void queryClient.invalidateQueries({ queryKey: ['consents'] });
-    },
-  });
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    create.mutate();
+    if (!date) return;
+    setShowBooking(true);
   };
 
-  if (showBooking && careRequestId !== null) {
+  if (showBooking) {
     return (
       <>
         <PageHeader title="Choose a clinic" subtitle="Clinics ranked by match score." />
         <BookingForm
-          careRequestId={careRequestId}
           defaultProblem={problem}
           defaultDate={date}
           onBooked={() => {
             setShowBooking(false);
-            setCareRequestId(null);
             navigate('/patient', { replace: true });
-          }}
-          onCancel={() => {
-            // Patient abandoned the booking flow: cancel the incomplete care request
-            // and create a fresh one so they can start over cleanly.
-            setShowBooking(false);
-            setCareRequestId(null);
-            create.mutate();
           }}
         />
       </>
@@ -116,9 +75,9 @@ export function NewRequestPage() {
               onChange={(e) => setDate(e.target.value)}
             />
           </Field>
-          <ErrorNote error={create.error} />
+          <ErrorNote error={undefined} />
           <div className="btn-row">
-            <Button type="submit" busy={create.isPending} disabled={!date}>
+            <Button type="submit" disabled={!date}>
               Find clinics
             </Button>
           </div>
