@@ -322,7 +322,9 @@ export function BookingForm({
             <Spinner label="Loading slots" />
           ) : centreSlots.length === 0 ? (
             <EmptyState title="No slots available">
-              No open slots at {selectedCentre?.name} on {date}. Try another day.
+              No open slots at {selectedCentre?.name} on {date}. The clinic needs to generate slots
+              first — ask them to set up operating hours and generate slots in Clinic Capacity &
+              Slots, or try another day.
             </EmptyState>
           ) : (
             <ul className="list">

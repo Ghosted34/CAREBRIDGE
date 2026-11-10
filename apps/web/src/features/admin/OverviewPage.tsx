@@ -20,7 +20,7 @@ export function OverviewPage() {
     <>
       <PageHeader
         title="Operations overview"
-        subtitle="Live counts across the CareBridge network."
+        subtitle="Live counts across the CareLynk network."
       />
       <div className="grid grid-4">
         <Stat

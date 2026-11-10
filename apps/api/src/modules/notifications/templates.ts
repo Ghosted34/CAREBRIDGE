@@ -83,7 +83,7 @@ export const TEMPLATES = {
     body: (p) =>
       `${p.provider} was unable to accept your appointment request on ${when(p.starts_at)}. You can choose another time or provider.`,
     sms: (p) =>
-      `CareBridge: ${p.provider} could not accept your appointment request on ${when(p.starts_at)}. Open the app to choose another time.`,
+      `CareLynk: ${p.provider} could not accept your appointment request on ${when(p.starts_at)}. Open the app to choose another time.`,
     link: (p) => `/patient/requests/${p.request_id}`,
   },
   appointment_booked_patient: {
@@ -91,7 +91,7 @@ export const TEMPLATES = {
     title: () => 'Appointment booked',
     body: (p) => `${p.provider} booked you in for ${when(p.starts_at)} (Lagos time).`,
     sms: (p) =>
-      `CareBridge: appointment booked with ${p.provider} on ${when(p.starts_at)}. Details in the app.`,
+      `CareLynk: appointment booked with ${p.provider} on ${when(p.starts_at)}. Details in the app.`,
     link: (p) => `/patient/requests/${p.request_id}`,
   },
   appointment_booked_provider: {
@@ -105,7 +105,7 @@ export const TEMPLATES = {
     channels: ['in_app', 'sms'],
     title: () => 'Appointment confirmed',
     body: (p) => `${p.provider} confirmed your appointment on ${when(p.starts_at)}.`,
-    sms: (p) => `CareBridge: ${p.provider} confirmed your appointment on ${when(p.starts_at)}.`,
+    sms: (p) => `CareLynk: ${p.provider} confirmed your appointment on ${when(p.starts_at)}.`,
     link: (p) => `/patient/requests/${p.request_id}`,
   },
   appointment_cancelled_patient: {
@@ -114,7 +114,7 @@ export const TEMPLATES = {
     body: (p) =>
       `${p.provider} cancelled your appointment on ${when(p.starts_at)}. You can book another time.`,
     sms: (p) =>
-      `CareBridge: your appointment on ${when(p.starts_at)} was cancelled. Open the app to rebook.`,
+      `CareLynk: your appointment on ${when(p.starts_at)} was cancelled. Open the app to rebook.`,
     link: (p) => `/patient/requests/${p.request_id}`,
   },
   appointment_cancelled_provider: {
@@ -132,7 +132,7 @@ export const TEMPLATES = {
   },
   account_approved: {
     channels: ['in_app', 'email'],
-    title: () => 'Your CareBridge account is approved',
+    title: () => 'Your CareLynk account is approved',
     body: () =>
       'You can now sign in. If you are linked to a clinic, matching requests will appear in your queue.',
     link: () => '/provider',
@@ -140,7 +140,7 @@ export const TEMPLATES = {
   team_invite: {
     channels: ['in_app', 'email'],
     title: () => 'You were added to a clinic team',
-    body: (p) => `${p.provider} added you to their CareBridge team as ${p.role}.`,
+    body: (p) => `${p.provider} added you to their CareLynk team as ${p.role}.`,
     link: () => '/provider',
   },
   referral_received: {
@@ -168,7 +168,7 @@ export const TEMPLATES = {
     body: (p) =>
       `${p.provider} has provided a cost estimate of ${p.amount ?? ''} for request #${p.request_id}.`,
     sms: (p) =>
-      `CareBridge: a cost estimate was issued for your request #${p.request_id}. Open the app to review.`,
+      `CareLynk: a cost estimate was issued for your request #${p.request_id}. Open the app to review.`,
     link: (p) => `/patient/requests/${p.request_id}`,
   },
   estimate_accepted: {
@@ -189,7 +189,7 @@ export const TEMPLATES = {
     body: (p) =>
       `Payment of ${p.amount ?? ''} for request #${p.request_id} was successfully processed.`,
     sms: (p) =>
-      `CareBridge: payment of ${p.amount ?? ''} for request #${p.request_id} was confirmed.`,
+      `CareLynk: payment of ${p.amount ?? ''} for request #${p.request_id} was confirmed.`,
     link: (p) => `/patient/requests/${p.request_id}`,
   },
   document_uploaded: {
@@ -207,7 +207,7 @@ export function render(key: string, payload: Payload) {
   if (!t)
     return {
       title: 'Update',
-      body: 'There is an update in CareBridge.',
+      body: 'There is an update in CareLynk.',
       link: '/',
       sms: undefined,
     };

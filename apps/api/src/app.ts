@@ -38,7 +38,7 @@ export function createApp() {
   );
 
   app.get('/health', (_req, res) => {
-    res.json({ status: 'ok', service: 'CareBridge API' });
+    res.json({ status: 'ok', service: 'CareLynk API' });
   });
 
   const v1 = Router();

@@ -74,7 +74,7 @@ export async function request<T>(method: Method, path: string, body?: unknown): 
     throw new ApiError(
       0,
       'NETWORK',
-      'Cannot reach CareBridge. Check your connection and try again.',
+      'Cannot reach CareLynk. Check your connection and try again.',
     );
   }
 

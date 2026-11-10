@@ -11,7 +11,7 @@ export function HomePage() {
           <h1>The right care, without the runaround.</h1>
           <p>
             Tell us what you need once. Verified clinics and specialists respond, you choose, and
-            CareBridge keeps every step — assessment, treatment and follow-up — in one place.
+            CareLynk keeps every step — assessment, treatment and follow-up — in one place.
           </p>
           <div className="btn-row">
             {user ? (
@@ -56,14 +56,14 @@ export function HomePage() {
           </p>
         </div>
         <div className="card">
-          <h3>CareBridge operators</h3>
+          <h3>CareLynk operators</h3>
           <p className="muted">
             Spot stuck requests, match by hand when needed and keep journeys moving.
           </p>
         </div>
       </div>
       <div className="notice notice-warn" style={{ marginTop: 24 }}>
-        <strong>Emergency?</strong> CareBridge is not an emergency service. Call{' '}
+        <strong>Emergency?</strong> CareLynk is not an emergency service. Call{' '}
         <strong>112</strong> or go to the nearest emergency department.
       </div>
     </>

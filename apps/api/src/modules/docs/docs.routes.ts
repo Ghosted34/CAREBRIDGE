@@ -5,7 +5,7 @@ export const docsRouter = Router();
 export const openapiSpec = {
   openapi: '3.1.0',
   info: {
-    title: 'CareBridge API',
+    title: 'CareLynk API',
     version: '0.2.0',
     description:
       'Coordinated access to verified healthcare capacity in Lagos (dental pilot). Manages patient requests, clinic offers, real capacity slots, clinical referrals, cost estimates, clinical documents, payments, and care journeys.',
@@ -228,7 +228,7 @@ docsRouter.get('/docs', (_req, res) => {
   res.send(`<!DOCTYPE html>
 <html>
 <head>
-  <title>CareBridge API Documentation</title>
+  <title>CareLynk API Documentation</title>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />

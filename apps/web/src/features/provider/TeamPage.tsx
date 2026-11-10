@@ -22,7 +22,7 @@ const TEAM_ROLES: TeamRole[] = ['clinician', 'scheduler', 'receptionist'];
 
 /**
  * Clinic team, managed by the clinic itself. Owners add, invite and remove their own
- * clinician/scheduler/receptionist staff once CareBridge has verified the facility —
+ * clinician/scheduler/receptionist staff once CareLynk has verified the facility —
  * no admin ticket needed. The API enforces the same rule.
  */
 export function TeamPage() {
@@ -101,7 +101,7 @@ export function TeamPage() {
       />
       {clinic.verification_status !== 'verified' ? (
         <Notice tone="warn">
-          Your facility is awaiting CareBridge verification. Team management unlocks as soon as it
+          Your facility is awaiting CareLynk verification. Team management unlocks as soon as it
           is verified.
         </Notice>
       ) : (

@@ -34,7 +34,7 @@ export function RegisterPage() {
     emergency_contact_phone: '',
   });
   // Filled in only by clinic / provider staff: the facility is created `pending` and this person
-  // becomes its owner, so they can manage their own team once CareBridge verifies it.
+  // becomes its owner, so they can manage their own team once CareLynk verifies it.
   const [clinic, setClinic] = useState({
     legal_name: '',
     display_name: '',
@@ -113,7 +113,7 @@ export function RegisterPage() {
           <h1>Thanks — we’ll be in touch</h1>
           <Notice tone="success">
             Your account and facility details have been submitted and are{' '}
-            <strong>awaiting verification</strong>. CareBridge checks your registration, then you
+            <strong>awaiting verification</strong>. CareLynk checks your registration, then you
             can sign in and manage your clinic team yourself.
           </Notice>
           <p style={{ marginTop: 14 }}>
@@ -299,7 +299,7 @@ export function RegisterPage() {
               <legend className="legend">Your facility</legend>
               <p className="small muted">
                 Submitted for verification. Nothing is published and no patient can reach you until
-                CareBridge approves it.
+                CareLynk approves it.
               </p>
               <div className="form-grid">
                 <Field label="Clinic name" error={fe('clinic')}>
@@ -391,7 +391,7 @@ export function RegisterPage() {
                 <Link to="/policies#terms" target="_blank">
                   terms of use
                 </Link>
-                . I understand CareBridge is not an emergency service.
+                . I understand CareLynk is not an emergency service.
               </span>
             </label>
             {fe('accept_terms') && <span className="field-error">{fe('accept_terms')}</span>}
@@ -417,7 +417,7 @@ export function RegisterPage() {
                 checked={form.marketing_opt_in}
                 onChange={check('marketing_opt_in')}
               />
-              <span>Send me occasional updates about CareBridge (optional).</span>
+              <span>Send me occasional updates about CareLynk (optional).</span>
             </label>
           </fieldset>
           {Object.keys(fieldErrors).length === 0 && <ErrorNote error={register.error} />}

@@ -14,11 +14,11 @@ import type {
 export type Tone = 'teal' | 'gold' | 'red' | 'grey' | 'green';
 
 export const requestStatus: Record<RequestStatus, { label: string; tone: Tone; hint: string }> = {
-  submitted: { label: 'Submitted', tone: 'gold', hint: 'Waiting for providers to respond' },
+  submitted: { label: 'Submitted', tone: 'gold', hint: 'Waiting to be matched with a provider' },
   matching: {
-    label: 'Offers in',
+    label: 'Matching',
     tone: 'gold',
-    hint: 'Providers have responded — review their offers',
+    hint: 'Provider is being matched to your request',
   },
   provider_accepted: {
     label: 'Provider confirmed',
@@ -36,8 +36,15 @@ export const requestStatus: Record<RequestStatus, { label: string; tone: Tone; h
   cancelled: { label: 'Cancelled', tone: 'grey', hint: 'This request was cancelled' },
 };
 
-export const appointmentStatus: Record<AppointmentStatus, { label: string; tone: Tone }> = {
-  requested: { label: 'Requested', tone: 'gold' },
+export const appointmentStatus: Record<
+  AppointmentStatus,
+  { label: string; tone: Tone; hint?: string }
+> = {
+  requested: {
+    label: 'Pending provider',
+    tone: 'gold',
+    hint: 'Provider needs to confirm your booking',
+  },
   booked: { label: 'Booked', tone: 'gold' },
   confirmed: { label: 'Confirmed', tone: 'teal' },
   checked_in: { label: 'Checked in', tone: 'teal' },

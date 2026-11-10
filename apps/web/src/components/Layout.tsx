@@ -49,8 +49,8 @@ const ROLE_LABEL: Record<Role, string> = {
 
 export function Brand() {
   return (
-    <NavLink to="/" className="brand" aria-label="CareBridge home">
-      Care<span>Bridge</span>
+    <NavLink to="/" className="brand" aria-label="CareLynk home">
+      Care<span>Lynk</span>
     </NavLink>
   );
 }
@@ -116,8 +116,8 @@ export function Layout() {
         <Outlet />
       </main>
       <footer className="footer">
-        CareBridge coordinates access to care; clinical decisions remain with licensed
-        professionals. In an emergency call <strong>112</strong>.{' '}
+        CareLynk coordinates access to care; clinical decisions remain with licensed professionals.
+        In an emergency call <strong>112</strong>.{' '}
         <NavLink to="/policies">Terms &amp; privacy</NavLink>
       </footer>
     </div>
