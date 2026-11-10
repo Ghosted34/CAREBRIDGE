@@ -18,7 +18,7 @@ const NAV: Record<Role, { to: string; label: string }[]> = {
     { to: '/provider/appointments', label: 'Appointments' },
     { to: '/provider/capacity', label: 'Capacity' },
     { to: '/provider/referrals', label: 'Referrals' },
-    { to: '/provider/offers', label: 'Offers' },
+    { to: '/provider/fees', label: 'Fees' },
     { to: '/provider/team', label: 'Team' },
   ],
   operator: [

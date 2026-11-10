@@ -160,7 +160,11 @@ export function BookingForm({
           preferred_city: 'Lagos',
           urgency: 'routine',
           has_emergency_symptoms: false,
-          target_provider_id: selectedProvider.provider_id,
+          // No target_provider_id here: the provider is assigned by book() ->
+          // setStatus() only after the patient confirms. Without this, create()
+          // would immediately transition the request to provider_accepted
+          // (directed request), making it look like the provider already
+          // confirmed before any appointment exists.
         });
         crId = request.data.id;
         setCreatedRequestId(crId);
