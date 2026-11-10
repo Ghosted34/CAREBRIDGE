@@ -84,7 +84,11 @@ export async function book(c: Ctx, input: z.infer<typeof BookAppointmentBody>) {
     });
     // Link the care request to the chosen provider so it appears in the provider's queue.
     // Patients pick the provider directly (no offer round), so the request is assigned here.
-    await requestsRepo.setStatus(tx, request.id, request.status, providerId);
+    // Transition submitted → provider_accepted so the UI shows the clinic has taken it on.
+    if (request.status !== 'provider_accepted') {
+      assertTransition('care_request', request.status, 'provider_accepted');
+    }
+    await requestsRepo.setStatus(tx, request.id, 'provider_accepted', providerId);
     if (input.slot_id) {
       await slotsRepo.updateSlotStatus(tx, input.slot_id, 'held', id);
     }
