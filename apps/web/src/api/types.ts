@@ -1,5 +1,5 @@
 /**
- * Response shapes of the CareBridge API (/api/v1). Hand-maintained: when an API response changes,
+ * Response shapes of the CareLynk API (/api/v1). Hand-maintained: when an API response changes,
  * update the type here in the same PR (see docs/CONVENTIONS.md §Web).
  */
 export type Role = 'patient' | 'provider_staff' | 'operator' | 'admin';
@@ -14,11 +14,11 @@ export type RequestStatus =
   | 'in_progress'
   | 'completed'
   | 'cancelled';
-export type OfferStatus = 'offered' | 'accepted' | 'declined' | 'expired' | 'withdrawn';
 export type AppointmentStatus =
-  'booked' | 'confirmed' | 'checked_in' | 'completed' | 'cancelled' | 'no_show';
+  'requested' | 'booked' | 'confirmed' | 'checked_in' | 'completed' | 'cancelled' | 'no_show';
 export type AppointmentType =
   'assessment' | 'specialist' | 'diagnostic' | 'procedure' | 'follow_up';
+export type AppointmentMode = 'physical' | 'remote';
 export type VerificationStatus = 'pending' | 'verified' | 'rejected' | 'suspended';
 export type UserStatus = 'pending' | 'active' | 'suspended';
 
@@ -120,32 +120,6 @@ export interface AssignedRequest extends QueueItem {
   assessments_completed: number;
 }
 
-export interface Offer {
-  id: number;
-  provider_id: number;
-  provider: string;
-  provider_address: string;
-  message: string | null;
-  status: OfferStatus;
-  offered_at: string;
-  responded_at: string | null;
-}
-
-export interface ProviderOffer {
-  id: number;
-  care_request_id: number;
-  provider_id: number;
-  provider: string;
-  message: string | null;
-  status: OfferStatus;
-  offered_at: string;
-  responded_at: string | null;
-  specialty: string;
-  service_type: string;
-  urgency: Urgency;
-  request_status: RequestStatus;
-}
-
 export interface Appointment {
   id: number;
   care_request_id: number;
@@ -153,7 +127,9 @@ export interface Appointment {
   patient_name: string;
   provider_id: number;
   provider: string;
+  centre_id: number | null;
   appointment_type: AppointmentType;
+  appointment_mode: AppointmentMode;
   starts_at: string;
   ends_at: string;
   status: AppointmentStatus;
@@ -205,7 +181,7 @@ export interface ProviderMember {
   created_at: string;
 }
 
-/** Roles a clinic owner can appoint themselves; `owner` is granted by CareBridge. */
+/** Roles a clinic owner can appoint themselves; `owner` is granted by CareLynk. */
 export type TeamRole = 'clinician' | 'scheduler' | 'receptionist';
 
 /** A provider-staff account a clinic owner may invite (contact details only). */
@@ -222,6 +198,8 @@ export interface ClinicRegistration {
   display_name: string;
   provider_type: Provider['provider_type'];
   registration_number: string;
+  cac_number: string;
+  tax_id: string;
   city: string;
   address: string;
   specialties: string[];
@@ -264,6 +242,7 @@ export type SlotStatus = 'available' | 'held' | 'booked' | 'cancelled';
 export interface ProviderSchedule {
   id: number;
   provider_id: number;
+  centre_id: number;
   day_of_week: number;
   open_time: string;
   close_time: string;
@@ -274,9 +253,12 @@ export interface ProviderSchedule {
 export interface ProviderSlot {
   id: number;
   provider_id: number;
+  centre_id: number;
   start_time: string;
   end_time: string;
   status: SlotStatus;
+  price: number | null;
+  currency: string | null;
   appointment_id: number | null;
   created_at: string;
 }
@@ -404,4 +386,58 @@ export interface AuditLog {
   ip_address: string | null;
   metadata: Record<string, unknown> | null;
   created_at: string;
+}
+
+export interface Centre {
+  id: number;
+  provider_id: number;
+  name: string;
+  address_line: string;
+  city: string;
+  state: string;
+  postal_code: string;
+  phone: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  is_active: boolean;
+}
+
+export interface Caregiver {
+  id: number;
+  provider_id: number;
+  centre_id: number;
+  full_name: string;
+  role: 'dentist' | 'caregiver' | 'hygienist' | 'specialist';
+  is_active: boolean;
+  centre_name: string;
+}
+
+export type FeeType =
+  'consultancy' | 'treatment' | 'late_change' | 'rescheduling' | 'no_show' | 'other';
+
+export interface ProviderFee {
+  id: number;
+  provider_id: number;
+  centre_id: number | null;
+  fee_type: FeeType;
+  amount: number;
+  currency: string;
+  is_active: boolean;
+}
+
+export interface PatientKYC {
+  address_street: string;
+  address_city: string;
+  address_state: string;
+  address_postal: string;
+  date_of_birth: string;
+  gender: 'male' | 'female' | 'other' | 'prefer_not_to_say';
+  id_number: string;
+  emergency_contact_name: string;
+  emergency_contact_phone: string;
+}
+
+export interface ProviderKYC {
+  cac_number: string;
+  tax_id: string;
 }

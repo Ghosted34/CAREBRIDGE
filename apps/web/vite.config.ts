@@ -8,6 +8,12 @@ const API_TARGET = process.env.VITE_API_PROXY ?? 'http://localhost:4000';
 
 export default defineConfig({
   plugins: [react()],
+  build: {
+    // Single deployment: web builds into the API's public dir so the API
+    // can serve both the static frontend and the API from one origin.
+    outDir: '../api/dist/public',
+    emptyOutDir: true,
+  },
   server: {
     port: 3000,
     proxy: { '/api': API_TARGET, '/health': API_TARGET },

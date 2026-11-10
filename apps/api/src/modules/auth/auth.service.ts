@@ -14,7 +14,7 @@ import * as repo from './auth.repo.js';
 const DUMMY_HASH = bcrypt.hashSync('not-a-real-password', 10);
 
 export async function register(input: z.infer<typeof RegisterBody>, ip: string | null) {
-  const { clinic, ...account } = input;
+  const { clinic, kyc, ...account } = input;
   if (clinic && account.role !== 'provider_staff') {
     throw AppError.badRequest('Facility details can only be registered by clinic / provider staff');
   }
@@ -30,6 +30,15 @@ export async function register(input: z.infer<typeof RegisterBody>, ip: string |
         password_hash,
         role: account.role,
         status,
+        address_street: kyc?.address_street ?? null,
+        address_city: kyc?.address_city ?? null,
+        address_state: kyc?.address_state ?? null,
+        address_postal: kyc?.address_postal ?? null,
+        date_of_birth: kyc?.date_of_birth ?? null,
+        gender: kyc?.gender ?? null,
+        id_number: kyc?.id_number ?? null,
+        emergency_contact_name: kyc?.emergency_contact_name ?? null,
+        emergency_contact_phone: kyc?.emergency_contact_phone ?? null,
       });
       await audit(tx, {
         actorUserId: id,

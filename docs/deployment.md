@@ -1,82 +1,234 @@
-# Deployment
+# CareLynk Deployment — Single Origin (Web + API)
 
-The pilot runs as four containers from `docker-compose.yml`:
+CareLynk deploys as a **single Node.js application**: the API (Express) serves
+both the REST API under `/api/v1/*` and the built React web app for all other
+routes. This works on cPanel (via "Setup Node.js App") or any Node host.
 
-| Service | Image | Port | Notes |
-|---|---|---|---|
-| `db` | `mysql:8.4` | 127.0.0.1:3306 | data in the `mysql_data` volume |
-| `api` | built from `apps/api/Dockerfile` | 4000 | runs `migrate up` then the server on every start |
-| `worker` | same image as `api` | — | sends queued SMS/email; starts once the API is healthy |
-| `web` | built from `apps/web/Dockerfile` (nginx) | 3000 → 80 | serves the SPA, proxies `/api` + `/health` to `api` |
+## Build
 
-Put a TLS-terminating reverse proxy (or load balancer) in front of `web` and expose only 443. The API
-trusts one proxy hop (`trust proxy = 1`) for client IPs in audit logs and rate limits.
-
-## Environment variables
-
-Set in the root `.env` (read by Compose). The API validates them at start-up and refuses to run if invalid.
-
-| Variable | Required | Default | Purpose |
-|---|---|---|---|
-| `NODE_ENV` | | `development` | `production` on servers |
-| `PORT` | | `4000` | API port |
-| `JWT_SECRET` | ✅ | — | ≥ 32 random chars. Rotating it signs everyone out |
-| `JWT_EXPIRES_IN` | | `8h` | token lifetime |
-| `DB_HOST` | | `127.0.0.1` | Compose overrides to `db` |
-| `DB_PORT` | | `3306` | |
-| `DB_NAME` | | `carebridge` | |
-| `DB_USER` | | `carebridge` | |
-| `DB_PASSWORD` | ✅ | — | |
-| `MYSQL_ROOT_PASSWORD` | ✅ (Compose) | — | MySQL container root password |
-| `CORS_ORIGIN` | | `http://localhost:3000` | only matters if a browser calls the API directly (not via nginx) |
-| `LOG_LEVEL` | | `info` | `fatal…trace`, `silent` |
-| `BCRYPT_ROUNDS` | | `12` | password hashing cost |
-| `SEED_PASSWORD` | | `CareBridge!2026` | dev seed only |
-| `NOTIFY_SMS_PROVIDER` | | `log` | `log`, `termii` or `none` — see [notifications.md](notifications.md) |
-| `NOTIFY_EMAIL_PROVIDER` | | `log` | `log`, `smtp` or `none` |
-| `TERMII_API_KEY` | if `termii` | — | from the Termii dashboard |
-| `TERMII_BASE_URL` | if `termii` | — | your account's base URL from the Termii dashboard |
-| `TERMII_SENDER_ID` | if `termii` | — | approved sender ID, 3–11 characters |
-| `TERMII_CHANNEL` | | `dnd` | `dnd` (reaches DND numbers; ask Termii to enable) or `generic` |
-| `SMTP_URL` | if `smtp` | — | e.g. `smtps://user:pass@smtp.example.com:465` |
-| `EMAIL_FROM` | | `CareBridge <no-reply@carebridge.local>` | sender address (smtp) |
-| `APP_URL` | | `http://localhost:3000` | public web address, used for links in emails |
-| `WORKER_POLL_MS` | | `5000` | how often an idle worker checks for messages |
-
-Generate a secret: `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`.
-
-## Deploying a new version
+From the repository root, build everything (web + API) in one command:
 
 ```bash
-git pull
-docker compose build
-mysqldump … > backup-$(date +%F).sql          # always, before migrations run
-docker compose up -d                            # api runs pending migrations on start
-docker compose logs -f api                      # look for "[migrate] done" / "already up to date"
+cd apps/api && npm run build
 ```
 
-If the API container keeps restarting, check its logs: a refused migration (edited file, out of order,
-partial failure) stops start-up on purpose. See [migrations.md](migrations.md#troubleshooting).
+This:
+1. Builds the React web app (Vite) → `apps/api/dist/public/`
+2. Compiles the TypeScript API → `apps/api/dist/`
+3. Copies DB migrations → `apps/api/dist/db/migrations/`
 
-**Rolling back code** that added migrations: roll back the migrations first
-(`docker compose exec api node dist/db/migrate.js down --steps N --yes`) *only if* their down sections are
-safe for the data now in the tables; otherwise restore from the backup.
+The startup file is `dist/server.js`.
 
-## Backups
+## Database migrations
 
-- Nightly `mysqldump --single-transaction --routines carebridge` to encrypted off-site storage.
-- Keep at least 30 days; test a restore monthly.
-- The `mysql_data` volume is not a backup.
+Migrations live in `apps/api/src/db/migrations/` as numbered SQL files
+(`YYYYMMDDHHmm_name.sql` with `-- migrate:up` and `-- migrate:down` sections).
+They are tracked in a `schema_migrations` table so they only run once.
 
-## Launch checklist (before real patient data)
+There are two ways to apply them, depending on your hosting:
 
-- [ ] TLS everywhere; HSTS at the edge proxy.
-- [ ] Strong, unique `JWT_SECRET`, DB and root passwords; `.env` readable only by the deploy user.
-- [ ] `NODE_ENV=production`; no seed data in the production database.
-- [ ] Backups running and a restore tested.
-- [ ] Monitoring on `/health`, container restarts, disk space, MySQL, and notifications stuck in `failed`.
-- [ ] Termii configured (approved sender ID, DND route enabled, credit) and SMTP for email — [notifications.md](notifications.md).
-- [ ] Log shipping with retention rules (logs already redact tokens, passwords and clinical text).
-- [ ] Emergency guidance text approved by clinical governance.
-- [ ] Items in [security.md → Before launch](security.md#before-launch) closed or explicitly accepted.
-- [ ] Legal/privacy review (NDPA 2023) and provider agreements signed.
+### Option A: Auto-migrate on server startup (recommended for cPanel & single-container Docker)
+
+Set `AUTO_MIGRATE=true` in your environment. On every API startup, `server.ts`
+checks for pending migrations and applies them automatically before the server
+starts listening. No terminal or CLI access is needed.
+
+**cPanel:** Add `AUTO_MIGRATE=true` to the Node.js app environment variables in
+cPanel's "Setup Node.js App" screen. When you create/restart the app, migrations
+run automatically.
+
+**Docker:** Add `AUTO_MIGRATE: "true"` to the API service environment in
+`docker-compose.yml`. When the container starts, migrations run automatically.
+
+### Option B: Run migrations via CLI (when you have terminal/SSH access)
+
+```bash
+cd apps/api
+npm run migrate:prod      # apply pending migrations
+npm run migrate:status    # show applied / pending
+```
+
+### Option C: Raw SQL via phpMyAdmin (cPanel, no CLI at all)
+
+If you can't run Node scripts and don't want auto-migrate, each migration file
+in `apps/api/src/db/migrations/` contains plain SQL. Open the file, copy the
+`-- migrate:up` section, and run it in phpMyAdmin (or MySQL Workbench) against
+your production database. Apply them in filename order.
+
+You must also create the tracking table manually the first time:
+
+```sql
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  version VARCHAR(12) PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  checksum CHAR(64) NOT NULL,
+  applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  execution_ms INT NOT NULL
+);
+```
+
+Then insert one row per applied migration with its version, name, and the SHA-256
+checksum of its up section. (Auto-migrate handles all of this for you.)
+
+## Docker single-deploy (API serves web + API)
+
+Update `docker-compose.yml` to use the single origin:
+
+```yaml
+services:
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:-carebridge}
+      MYSQL_USER: ${DB_USER:-carebridge}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    ports: ['127.0.0.1:3306:3306']
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: ./apps/api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_HOST: db
+      AUTO_MIGRATE: "true"   # migrations run on container startup
+    ports: ['4000:4000']
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:4000/health']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  worker:
+    build: ./apps/api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_HOST: db
+    command: ['node', 'dist/worker.js']
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  mysql_data:
+```
+
+Note: the separate `web` service is removed because the API now serves the
+built React app directly. Build with:
+
+```bash
+docker-compose up --build -d
+```
+
+## cPanel deployment
+
+### 1. Set up the Node.js app
+
+In cPanel, go to **Software → Setup Node.js App**:
+
+| Setting | Value |
+|---------|-------|
+| Application root | `/home/username/CAREBRIDGE/apps/api` (or your checkout path) |
+| Application URL | `https://yourdomain.com` |
+| Application startup file | `dist/server.js` |
+| Node.js version | 22.12 or higher |
+| Passenger environment | `production` |
+
+Click **Create**.
+
+### 2. Environment variables
+
+Add these in the cPanel Node.js app environment variables:
+
+```
+NODE_ENV=production
+PORT=3000          # or the port cPanel assigns
+CORS_ORIGIN=https://yourdomain.com
+DB_HOST=localhost
+DB_PORT=3306
+DB_NAME=carebridge
+DB_USER=your_db_user
+DB_PASSWORD=your_db_password
+JWT_SECRET=a-long-random-secret-string-at-least-32-chars
+AUTO_MIGRATE=true  # migrations apply automatically on app start
+```
+
+### 3. Build & deploy
+
+Upload the built `dist/` folder (run `cd apps/api && npm run build` locally,
+then upload `apps/api/dist/` to your app root), or build on the server if cPanel
+gives you terminal access.
+
+### 4. Migrations
+
+With `AUTO_MIGRATE=true`, migrations run automatically when you create or restart
+the app. No terminal needed.
+
+If you prefer manual control, use Option B (CLI) or Option C (raw SQL via
+phpMyAdmin) above.
+
+### 5. Seed (optional, staging/demo)
+
+If you have terminal access:
+
+```bash
+cd /home/username/CAREBRIDGE/apps/api
+npm run seed
+```
+
+Default accounts:
+- `admin@carebridge.local` / `CareBridge!2026`
+- `operator@carebridge.local` / `CareBridge!2026`
+- `patient@carebridge.local` / `CareBridge!2026`
+- `owner.lekki@carebridge.local` / `CareBridge!2026`
+- `owner.ikeja@carebridge.local` / `CareBridge!2026`
+
+### 6. Restart
+
+After any code change, restart the Node.js app in cPanel
+(Software → Setup Node.js App → Restart). Migrations re-check on every restart
+and only apply new ones.
+
+## What the single origin means for the browser
+
+| URL pattern | Handled by |
+|-------------|------------|
+| `/api/v1/*` | Express API (JSON) |
+| `/health` | Express API (JSON) |
+| Everything else (`/`, `/patient/new`, `/provider/fees`, etc.) | React web app (served as static `index.html` + client-side routing) |
+
+## cPanel-specific notes
+
+- cPanel runs Node.js apps under **Phusion Passenger**. The `dist/server.js` file is the Passenger entry point.
+- The API binds to the port cPanel assigns via the `PORT` env var. `server.ts` reads `env.PORT`.
+- `CORS_ORIGIN` should be set to your actual domain (e.g. `https://yourdomain.com`) so browsers allow the API calls.
+- If cPanel puts the app in a subdirectory (not root domain), set Vite's `base` accordingly in `apps/web/vite.config.ts` and update `CORS_ORIGIN`.
+
+## Rolling back
+
+Since this is a single deployment, roll back by redeploying the previous Git commit:
+
+```bash
+git checkout <previous-commit>
+cd apps/api && npm run build
+# then restart the Node.js app in cPanel (or restart the Docker container)
+```
+
+To roll back a specific migration (only if you have CLI access):
+
+```bash
+cd apps/api
+npm run migrate:down -- --yes --steps 1
+```

@@ -20,6 +20,10 @@ const EnvSchema = z.object({
   NOTIFY_EMAIL_PROVIDER: z.string().default('log'),
   APP_URL: z.string().default('http://localhost:3000'), // used for links in emails
   WORKER_POLL_MS: z.coerce.number().int().min(500).default(5000),
+  // When true, applies pending database migrations on server startup.
+  // Required for single-container deployments (Docker, cPanel) where there
+  // is no separate CLI step to run migrations before the API starts.
+  AUTO_MIGRATE: z.coerce.boolean().default(false),
 });
 
 const parsed = EnvSchema.safeParse(process.env);

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import { api } from '../../api/endpoints';
+import type { Centre } from '../../api/types';
 import { Button, Card, EmptyState, ErrorNote, Field, Modal, Pill } from '../../components/ui';
 import { formatDateTime, toLagosLocal } from '../../lib/time';
 import { slotStatus } from '../../lib/labels';
@@ -8,22 +9,50 @@ import { useActiveClinic } from './activeClinic';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+type DayScheduleInput = {
+  day_of_week: number;
+  open_time: string;
+  close_time: string;
+  slot_duration_minutes: number;
+  is_active: boolean;
+};
+
 export function CapacityPage() {
   const queryClient = useQueryClient();
   // Capacity follows the clinic picked in the topbar switcher.
   const { clinicId } = useActiveClinic();
   const [generateOpen, setGenerateOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [startDate, setStartDate] = useState(() => toLagosLocal(new Date()).slice(0, 10));
   const [endDate, setEndDate] = useState(() =>
     toLagosLocal(new Date(Date.now() + 14 * 86_400_000)).slice(0, 10),
   );
 
   const activeId = clinicId;
+  const [selectedCentreId, setSelectedCentreId] = useState<number | null>(null);
+  const [addCentreOpen, setAddCentreOpen] = useState(false);
+  const [centreName, setCentreName] = useState('');
+  const [centreAddress, setCentreAddress] = useState('');
+  const [centreCity, setCentreCity] = useState('');
+  const [centreState, setCentreState] = useState('');
+  const [centrePostalCode, setCentrePostalCode] = useState('');
+  const [centrePhone, setCentrePhone] = useState('');
+
+  const { data: centresData } = useQuery({
+    queryKey: ['centres', activeId],
+    queryFn: () => (activeId ? api.centres(activeId) : null),
+    enabled: Boolean(activeId),
+  });
+
+  const centres = centresData?.data ?? [];
 
   const { data: schedulesData, isLoading: schedulesLoading } = useQuery({
-    queryKey: ['schedules', activeId],
-    queryFn: () => (activeId ? api.providerSchedules(activeId) : null),
-    enabled: Boolean(activeId),
+    queryKey: ['schedules', activeId, selectedCentreId],
+    queryFn: () =>
+      activeId && selectedCentreId
+        ? api.providerSchedulesByCentre(activeId, selectedCentreId)
+        : null,
+    enabled: Boolean(activeId) && Boolean(selectedCentreId),
   });
 
   const { data: slotsData, isLoading: slotsLoading } = useQuery({
@@ -34,13 +63,43 @@ export function CapacityPage() {
 
   const generate = useMutation({
     mutationFn: () =>
-      api.generateSlots(activeId!, {
+      api.generateSlots(activeId!, selectedCentreId!, {
         start_date: startDate,
         end_date: endDate,
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['slots', activeId] });
       setGenerateOpen(false);
+    },
+  });
+
+  const setSchedules = useMutation({
+    mutationFn: () => api.setProviderSchedules(activeId!, selectedCentreId!, daySchedules),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['schedules', activeId] });
+      setEditOpen(false);
+    },
+  });
+
+  const createCentre = useMutation({
+    mutationFn: () =>
+      api.createCentre(activeId!, {
+        name: centreName,
+        address_line: centreAddress,
+        city: centreCity,
+        state: centreState,
+        postal_code: centrePostalCode,
+        phone: centrePhone || undefined,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['centres', activeId] });
+      setAddCentreOpen(false);
+      setCentreName('');
+      setCentreAddress('');
+      setCentreCity('');
+      setCentreState('');
+      setCentrePostalCode('');
+      setCentrePhone('');
     },
   });
 
@@ -51,8 +110,41 @@ export function CapacityPage() {
     },
   });
 
-  const schedules = schedulesData?.data ?? [];
+  const schedules = useMemo(() => schedulesData?.data ?? [], [schedulesData]);
   const slots = slotsData?.data ?? [];
+
+  // Base schedules fetched from the API, keyed by day_of_week.
+  const baseSchedules = useMemo(
+    () =>
+      DAYS.map((_, dayIndex): DayScheduleInput => {
+        const existing = schedules.find((s) => s.day_of_week === dayIndex);
+        return {
+          day_of_week: dayIndex,
+          open_time: existing?.open_time ?? '09:00',
+          close_time: existing?.close_time ?? '17:00',
+          slot_duration_minutes: existing?.slot_duration_minutes ?? 30,
+          is_active: Boolean(existing?.is_active ?? true),
+        };
+      }),
+    [schedules],
+  );
+
+  // User edits layered on top of the base schedules.
+  const [edits, setEdits] = useState<Map<number, Partial<DayScheduleInput>>>(new Map());
+
+  const daySchedules = baseSchedules.map((s) => ({
+    ...s,
+    ...edits.get(s.day_of_week),
+  }));
+
+  const updateDay = (dayOfWeek: number, key: string, value: string | number | boolean) => {
+    setEdits((prev) => {
+      const next = new Map(prev);
+      const current = next.get(dayOfWeek) ?? {};
+      next.set(dayOfWeek, { ...current, [key]: value });
+      return next;
+    });
+  };
 
   return (
     <div className="stack gap-4">
@@ -62,7 +154,29 @@ export function CapacityPage() {
           <p className="hint">Manage operating hours and real bookable appointment capacity.</p>
         </div>
         <div className="cluster gap-2">
-          <Button onClick={() => setGenerateOpen(true)} disabled={!activeId}>
+          {centres.length > 0 ? (
+            <Field label="Centre">
+              <select
+                required
+                value={selectedCentreId == null ? '' : String(selectedCentreId)}
+                onChange={(e) => setSelectedCentreId(Number(e.target.value) || null)}
+              >
+                <option value="">Select a centre…</option>
+                {centres.map((c: Centre) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          ) : null}
+          {centres.length > 0 ? (
+            <Button onClick={() => setAddCentreOpen(true)}>Add centre</Button>
+          ) : null}
+          <Button onClick={() => setEditOpen(true)} disabled={!selectedCentreId}>
+            Edit hours
+          </Button>
+          <Button onClick={() => setGenerateOpen(true)} disabled={!selectedCentreId}>
             Generate slots
           </Button>
         </div>
@@ -71,11 +185,15 @@ export function CapacityPage() {
       <div className="grid col-2 gap-4">
         <Card>
           <h3 className="mb-2">Operating schedule</h3>
-          {schedulesLoading ? (
+          {selectedCentreId === null ? (
+            <EmptyState title="Select a centre">
+              Pick a centre above to view and edit its operating hours.
+            </EmptyState>
+          ) : schedulesLoading ? (
             <p>Loading schedule…</p>
           ) : schedules.length === 0 ? (
             <EmptyState title="No operating hours configured">
-              Configure opening hours for this clinic to enable automated slot generation.
+              Use “Edit hours” to set opening times for this centre.
             </EmptyState>
           ) : (
             <div className="table-wrap">
@@ -111,7 +229,11 @@ export function CapacityPage() {
 
         <Card>
           <h3 className="mb-2">Upcoming bookable slots</h3>
-          {slotsLoading ? (
+          {selectedCentreId === null ? (
+            <EmptyState title="Select a centre">
+              Pick a centre above to view its generated slots.
+            </EmptyState>
+          ) : slotsLoading ? (
             <p>Loading slots…</p>
           ) : slots.length === 0 ? (
             <EmptyState title="No slots generated">
@@ -197,6 +319,176 @@ export function CapacityPage() {
             </Button>
             <Button type="submit" busy={generate.isPending}>
               Generate slots
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal open={editOpen} title="Set operating hours" onClose={() => setEditOpen(false)}>
+        <form
+          className="form"
+          onSubmit={(e: FormEvent) => {
+            e.preventDefault();
+            setSchedules.mutate();
+          }}
+        >
+          <p className="hint">
+            Set open/close times and slot duration for each day. Inactive days won&apos;t generate
+            slots.
+          </p>
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Day</th>
+                  <th>Opens</th>
+                  <th>Closes</th>
+                  <th>Slot (min)</th>
+                  <th>Active</th>
+                </tr>
+              </thead>
+              <tbody>
+                {daySchedules.map((d) => (
+                  <tr key={d.day_of_week}>
+                    <td>{DAYS[d.day_of_week]}</td>
+                    <td>
+                      <Field label="Open time" className="span-1">
+                        <input
+                          type="time"
+                          required
+                          value={d.open_time}
+                          onChange={(e) => updateDay(d.day_of_week, 'open_time', e.target.value)}
+                        />
+                      </Field>
+                    </td>
+                    <td>
+                      <Field label="Close time" className="span-1">
+                        <input
+                          type="time"
+                          required
+                          value={d.close_time}
+                          onChange={(e) => updateDay(d.day_of_week, 'close_time', e.target.value)}
+                        />
+                      </Field>
+                    </td>
+                    <td>
+                      <Field label="Duration" className="span-1">
+                        <input
+                          type="number"
+                          required
+                          min="5"
+                          max="480"
+                          step="5"
+                          value={d.slot_duration_minutes}
+                          onChange={(e) =>
+                            updateDay(
+                              d.day_of_week,
+                              'slot_duration_minutes',
+                              Number(e.target.value),
+                            )
+                          }
+                        />
+                      </Field>
+                    </td>
+                    <td>
+                      <label className="check">
+                        <input
+                          type="checkbox"
+                          checked={d.is_active}
+                          onChange={(e) => updateDay(d.day_of_week, 'is_active', e.target.checked)}
+                        />
+                        {d.is_active ? 'Active' : 'Closed'}
+                      </label>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <ErrorNote error={setSchedules.error} />
+          <div className="btn-row">
+            <Button variant="ghost" onClick={() => setEditOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" busy={setSchedules.isPending}>
+              Save hours
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal
+        open={addCentreOpen}
+        title="Add operating centre"
+        onClose={() => setAddCentreOpen(false)}
+      >
+        <form
+          className="form"
+          onSubmit={(e: FormEvent) => {
+            e.preventDefault();
+            createCentre.mutate();
+          }}
+        >
+          <p className="hint">
+            Add a new operating centre for this clinic. Each centre can have its own hours and
+            bookable slots.
+          </p>
+          <div className="form-grid">
+            <Field label="Centre name">
+              <input
+                type="text"
+                required
+                value={centreName}
+                onChange={(e) => setCentreName(e.target.value)}
+              />
+            </Field>
+            <Field label="Address line">
+              <input
+                type="text"
+                required
+                value={centreAddress}
+                onChange={(e) => setCentreAddress(e.target.value)}
+              />
+            </Field>
+            <Field label="City">
+              <input
+                type="text"
+                required
+                value={centreCity}
+                onChange={(e) => setCentreCity(e.target.value)}
+              />
+            </Field>
+            <Field label="State">
+              <input
+                type="text"
+                required
+                value={centreState}
+                onChange={(e) => setCentreState(e.target.value)}
+              />
+            </Field>
+            <Field label="Postal code">
+              <input
+                type="text"
+                required
+                value={centrePostalCode}
+                onChange={(e) => setCentrePostalCode(e.target.value)}
+              />
+            </Field>
+            <Field label="Phone (optional)">
+              <input
+                type="tel"
+                value={centrePhone}
+                onChange={(e) => setCentrePhone(e.target.value)}
+              />
+            </Field>
+          </div>
+          <ErrorNote error={createCentre.error} />
+          <div className="btn-row">
+            <Button variant="ghost" onClick={() => setAddCentreOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" busy={createCentre.isPending}>
+              Add centre
             </Button>
           </div>
         </form>

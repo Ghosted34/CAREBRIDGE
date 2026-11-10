@@ -32,6 +32,15 @@ Nothing is published and a self-registered owner cannot sign in until an admin a
 (`POST /admin/providers/:id/verification`) **and** activates the account (`POST /admin/users/:id/status`) —
 after that the owner manages their own team (below).
 
+## Patient & Provider KYC
+
+| Method & path | Who | Body | Notes |
+|---|---|---|---|
+| `GET /patient/kyc` | patient | — | patient's structured address, DOB, gender, ID number, emergency contact |
+| `POST /patient/kyc` | patient | `address_street, address_city, address_state, address_postal, date_of_birth, gender, id_number, emergency_contact_name, emergency_contact_phone` | set or update patient KYC. The single saved address is used for provider matching. |
+| `GET /admin/providers/:id/kyc` | admin, operator | — | provider's KYC: CAC number, tax ID |
+| `POST /admin/providers/:id/verification` | admin | `verification_status: verified \\| rejected \\| suspended` | manual KYC verification of a facility (auto-verify later) |
+
 ## Provider team (self-managed)
 
 | Method & path | Who | Body / query | Notes |
@@ -111,19 +120,34 @@ Before that they return `409 VISIT_REQUIRED` and write nothing. Booking an appoi
 
 | Method & path | Who | Body | Notes |
 |---|---|---|---|
-| `POST /appointments` | patient (own request), staff of the assigned provider, operator, admin | `care_request_id, starts_at, ends_at, appointment_type, slot_id?` | Overlap check or atomic slot claim. Serialised per provider |
+| `POST /appointments` | patient (own request), staff of the assigned provider, operator, admin | `care_request_id, provider_id, centre_id?, starts_at, ends_at, appointment_type, appointment_mode?, slot_id?, caregiver_id?` | Creates appointment as `requested`; holds the slot. Provider confirms or declines. No offer round. |
 | `GET /appointments/mine` | any | `provider_id?`, paging | patient: own (always) · staff: their providers', or one clinic via `provider_id` · ops: all |
-| `POST /appointments/:id/confirm` | provider staff, operator, admin | — | `booked → confirmed` |
+| `POST /appointments/:id/confirm` | provider staff, operator, admin | — | `requested → confirmed` or `booked → confirmed` |
+| `POST /appointments/:id/decline` | provider staff, operator, admin | — | `requested → cancelled` — declines a booking request |
 | `POST /appointments/:id/check-in` | 〃 | — | `confirmed → checked_in` |
 | `POST /appointments/:id/complete` | 〃 | — | `checked_in → completed` |
 | `POST /appointments/:id/no-show` | 〃 | — | `confirmed → no_show` |
-| `POST /appointments/:id/cancel` | own patient, provider staff, operator, admin | — | from `booked`/`confirmed` |
+| `POST /appointments/:id/cancel` | own patient, provider staff, operator, admin | — | from `requested`/`booked`/`confirmed` |
+| `POST /appointments/:id/provider` | patient (own request), staff of the provider | `provider_id, centre_id?` | Reassign a `requested` appointment to a different provider/centre before confirmation. |
+| `GET /appointments/:id/notes` | patient, provider staff, operator, admin | — | post-visit notes on the appointment |
+| `POST /appointments/:id/notes` | provider staff, operator, admin | `note_type, summary` | add a post-visit note (follow_up, referral, prescription, closing_consultancy). Only after check-in. |
 | `GET /providers/:id/schedules` | public | — | weekly opening hours & slot duration |
-| `PUT /providers/:id/schedules` | provider owner/scheduler, admin | `schedules: [{ day_of_week, open_time, close_time, slot_duration_minutes, is_active }]` | updates clinic capacity |
-| `GET /providers/:id/slots` | public | `from?, to?, status?` | bookable appointment slots |
-| `POST /providers/:id/slots` | provider staff, admin | `start_time, end_time` | manual slot creation |
-| `POST /providers/:id/slots/generate` | provider staff, admin | `start_date, end_date` | generates slots across date range from schedule |
+| `PUT /providers/:id/schedules` | provider owner/scheduler, admin | `centre_id, schedules: [...]` | updates clinic capacity for one centre |
+| `GET /providers/:id/centres` | any member, operator, admin | — | operating centres of a clinic |
+| `POST /providers/:id/centres` | clinic owner, operator, admin | `name, address_line, city, state, postal_code, phone?` | add an operating centre |
+| `PUT /providers/:id/centres/:centreId` | clinic owner, operator, admin | partial centre fields | update an operating centre |
+| `GET /providers/:id/caregivers` | any member, operator, admin | — | caregivers at a clinic's centres |
+| `POST /providers/:id/caregivers` | clinic owner, operator, admin | `centre_id, full_name, role` | add a caregiver to a centre |
+| `GET /providers/:id/fees` | any member, operator, admin, patient | — | fee types & amounts for a clinic (consultancy, treatment, etc.) |
+| `POST /providers/:id/fees` | clinic owner, operator, admin | `centre_id?, fee_type, amount, currency?, is_active?` | set or upsert a fee type, optionally centre-scoped |
+| `PUT /providers/:id/fees/:feeId` | clinic owner, operator, admin | partial fee fields | update an existing fee |
+| `DELETE /providers/:id/fees/:feeId` | clinic owner, operator, admin | — | delete a fee type |
+| `GET /centres/:centreId/slots` | public | `from?, to?, status?` | bookable slots at one centre |
+| `GET /providers/:id/slots` | public | `from?, to?, status?, centre_id?` | bookable appointment slots |
+| `POST /providers/:id/slots` | provider staff, admin | `centre_id, start_time, end_time, price?, currency?` | manual slot creation |
+| `POST /providers/:id/slots/generate` | provider staff, admin | `centre_id, start_date, end_date, price?, currency?` | generates slots across date range from schedule |
 | `POST /slots/:id/cancel` | provider staff, admin | — | cancels open slot |
+| `POST /slots/:id/price` | provider staff, admin | `price, currency` | set/update the price of a slot |
 
 ## Referrals, Estimates, Documents, Payments & Matching
 

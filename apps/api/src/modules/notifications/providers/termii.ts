@@ -42,7 +42,7 @@ export const termii = defineProvider({
       })
       .transform((u) => u.replace(/\/+$/, '')),
     TERMII_SENDER_ID: z
-      .string({ error: 'TERMII_SENDER_ID is required: your approved sender ID, e.g. CareBridge' })
+      .string({ error: 'TERMII_SENDER_ID is required: your approved sender ID, e.g. CareLynk' })
       .regex(
         /^[A-Za-z0-9 ]{3,11}$/,
         'TERMII_SENDER_ID must be 3–11 letters/digits and approved by Termii',

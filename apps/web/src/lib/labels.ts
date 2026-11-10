@@ -2,7 +2,7 @@ import type {
   AppointmentStatus,
   AppointmentType,
   EstimateStatus,
-  OfferStatus,
+  FeeType,
   PaymentStatus,
   ProviderRole,
   ReferralStatus,
@@ -15,11 +15,11 @@ import type {
 export type Tone = 'teal' | 'gold' | 'red' | 'grey' | 'green';
 
 export const requestStatus: Record<RequestStatus, { label: string; tone: Tone; hint: string }> = {
-  submitted: { label: 'Submitted', tone: 'gold', hint: 'Waiting for providers to respond' },
+  submitted: { label: 'Submitted', tone: 'gold', hint: 'Waiting to be matched with a provider' },
   matching: {
-    label: 'Offers in',
+    label: 'Matching',
     tone: 'gold',
-    hint: 'Providers have responded — review their offers',
+    hint: 'Provider is being matched to your request',
   },
   provider_accepted: {
     label: 'Provider confirmed',
@@ -37,15 +37,15 @@ export const requestStatus: Record<RequestStatus, { label: string; tone: Tone; h
   cancelled: { label: 'Cancelled', tone: 'grey', hint: 'This request was cancelled' },
 };
 
-export const offerStatus: Record<OfferStatus, { label: string; tone: Tone }> = {
-  offered: { label: 'Awaiting patient', tone: 'gold' },
-  accepted: { label: 'Accepted', tone: 'green' },
-  declined: { label: 'Declined', tone: 'grey' },
-  expired: { label: 'Expired', tone: 'grey' },
-  withdrawn: { label: 'Withdrawn', tone: 'grey' },
-};
-
-export const appointmentStatus: Record<AppointmentStatus, { label: string; tone: Tone }> = {
+export const appointmentStatus: Record<
+  AppointmentStatus,
+  { label: string; tone: Tone; hint?: string }
+> = {
+  requested: {
+    label: 'Pending provider',
+    tone: 'gold',
+    hint: 'Provider needs to confirm your booking',
+  },
   booked: { label: 'Booked', tone: 'gold' },
   confirmed: { label: 'Confirmed', tone: 'teal' },
   checked_in: { label: 'Checked in', tone: 'teal' },
@@ -123,6 +123,15 @@ export const slaCategory: Record<
   unbooked_delay: { label: 'Unbooked (>24h)', tone: 'red' },
   clinical_stalled: { label: 'Stalled (>7d)', tone: 'gold' },
   standard: { label: 'On Track', tone: 'green' },
+};
+
+export const feeType: Record<FeeType, string> = {
+  consultancy: 'Consultation',
+  treatment: 'Treatment',
+  late_change: 'Late change',
+  rescheduling: 'Rescheduling',
+  no_show: 'No-show',
+  other: 'Other',
 };
 
 export const titleCase = (s: string) =>

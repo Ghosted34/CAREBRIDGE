@@ -2,9 +2,12 @@ import cors from 'cors';
 import express, { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
+import path from 'path';
+import { fileURLToPath } from 'node:url';
 import { env } from './config/env.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { adminRouter } from './modules/admin/admin.routes.js';
+import { appointmentNotesRouter } from './modules/appointment_notes/appointment_notes.routes.js';
 import { appointmentsRouter } from './modules/appointments/appointments.routes.js';
 import { authRouter } from './modules/auth/auth.routes.js';
 import { consentsRouter } from './modules/consents/consents.routes.js';
@@ -12,7 +15,7 @@ import { docsRouter } from './modules/docs/docs.routes.js';
 import { documentsRouter } from './modules/documents/documents.routes.js';
 import { estimatesRouter } from './modules/estimates/estimates.routes.js';
 import { notificationsRouter } from './modules/notifications/notifications.routes.js';
-import { offersRouter } from './modules/offers/offers.routes.js';
+
 import { paymentsRouter } from './modules/payments/payments.routes.js';
 import { providersRouter } from './modules/providers/providers.routes.js';
 import { referralsRouter } from './modules/referrals/referrals.routes.js';
@@ -37,17 +40,17 @@ export function createApp() {
   );
 
   app.get('/health', (_req, res) => {
-    res.json({ status: 'ok', service: 'CareBridge API' });
+    res.json({ status: 'ok', service: 'CareLynk API' });
   });
 
   const v1 = Router();
   v1.use(
     authRouter,
+    appointmentNotesRouter,
     consentsRouter,
     notificationsRouter,
     providersRouter,
     requestsRouter,
-    offersRouter,
     appointmentsRouter,
     slotsRouter,
     referralsRouter,
@@ -58,6 +61,25 @@ export function createApp() {
     adminRouter,
   );
   app.use('/api/v1', v1);
+
+  // Serve the built web app (single deployment: web + api together).
+  // Static assets are served from dist/public; all other non-API routes fall
+  // through to index.html so React Router client-side routing works.
+  // Uses app.use() (middleware) rather than app.get() with a path pattern,
+  // because Express 5's path-to-regexp does not support bare '*' wildcards.
+  const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist', 'public');
+  app.use(express.static(publicDir));
+  app.use((_req, res) => {
+    // API routes that don't match should 404 via the notFoundHandler below.
+    // Only non-API routes fall through to the SPA's index.html.
+    if (_req.path.startsWith('/api/')) {
+      res.status(404).json({
+        error: { code: 'NOT_FOUND', message: 'Not found', details: {} },
+      });
+    } else {
+      res.sendFile(path.join(publicDir, 'index.html'));
+    }
+  });
 
   app.use(notFoundHandler);
   app.use(errorHandler);

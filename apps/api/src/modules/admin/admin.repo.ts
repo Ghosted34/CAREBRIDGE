@@ -163,7 +163,6 @@ export async function listStuckRequests(db: Db) {
             r.assigned_provider_id, p.display_name AS assigned_provider,
             r.created_at, r.updated_at,
             TIMESTAMPDIFF(MINUTE, r.created_at, NOW()) AS age_minutes,
-            (SELECT COUNT(*) FROM provider_offers po WHERE po.care_request_id = r.id) AS offers_count,
             (SELECT COUNT(*) FROM appointments ap WHERE ap.care_request_id = r.id AND ap.status != 'cancelled') AS appointments_count,
             CASE
               WHEN r.status IN ('submitted','matching') AND TIMESTAMPDIFF(MINUTE, r.created_at, NOW()) >= 120 THEN 'unmatched_breach'

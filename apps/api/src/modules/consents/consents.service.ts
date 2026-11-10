@@ -2,7 +2,6 @@ import { pool, withTransaction, type Db } from '../../db/pool.js';
 import { audit } from '../../lib/audit.js';
 import { AppError } from '../../lib/errors.js';
 import type { Ctx } from '../../lib/http.js';
-import * as offersRepo from '../offers/offers.repo.js';
 import * as requestsRepo from '../requests/requests.repo.js';
 import { CONSENT_TYPES, POLICIES, REQUIRED_FOR_REQUESTS, type ConsentType } from './policies.js';
 import * as repo from './consents.repo.js';
@@ -116,7 +115,6 @@ export async function decide(c: Ctx, type: ConsentType, granted: boolean, source
         withdrawnRequests = await requestsRepo.openIdsForPatient(tx, c.user.id);
         for (const id of withdrawnRequests) {
           await requestsRepo.setStatus(tx, id, 'cancelled');
-          await offersRepo.expireOpenForRequest(tx, id);
           await audit(tx, {
             actorUserId: c.user.id,
             action: 'CARE_REQUEST_CANCELLED',

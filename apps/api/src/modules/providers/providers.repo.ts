@@ -26,6 +26,113 @@ export async function findVerified(db: Db, id: number) {
   return rows[0];
 }
 
+// ---- operating centres ----
+
+export async function findCentre(db: Db, centreId: number) {
+  const [rows] = await db.execute<Row[]>(
+    `SELECT id, provider_id, name, address_line, city, state, postal_code, phone, latitude, longitude, is_active
+       FROM provider_centres
+      WHERE id = ?`,
+    [centreId],
+  );
+  return rows[0];
+}
+
+export async function listCentres(db: Db, providerId: number) {
+  const [rows] = await db.execute<Row[]>(
+    `SELECT id, provider_id, name, address_line, city, state, postal_code, phone, latitude, longitude, is_active
+       FROM provider_centres
+      WHERE provider_id = ?
+      ORDER BY name ASC`,
+    [providerId],
+  );
+  return rows;
+}
+
+export async function insertCentre(
+  db: Db,
+  providerId: number,
+  centre: {
+    name: string;
+    address_line: string;
+    city: string;
+    state: string;
+    postal_code: string;
+    phone: string | null;
+    latitude: number | null;
+    longitude: number | null;
+  },
+): Promise<number> {
+  const [r] = await db.execute<Result>(
+    `INSERT INTO provider_centres (provider_id, name, address_line, city, state, postal_code, phone, latitude, longitude)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      providerId,
+      centre.name,
+      centre.address_line,
+      centre.city,
+      centre.state,
+      centre.postal_code,
+      centre.phone,
+      centre.latitude,
+      centre.longitude,
+    ],
+  );
+  return r.insertId;
+}
+
+export async function updateCentre(
+  db: Db,
+  centreId: number,
+  providerId: number,
+  changes: {
+    name?: string;
+    address_line?: string;
+    city?: string;
+    state?: string;
+    postal_code?: string;
+    phone?: string | null;
+    is_active?: boolean;
+  },
+): Promise<void> {
+  const sets: string[] = [];
+  const params: (string | number | null)[] = [];
+  if (changes.name !== undefined) {
+    sets.push('name = ?');
+    params.push(changes.name);
+  }
+  if (changes.address_line !== undefined) {
+    sets.push('address_line = ?');
+    params.push(changes.address_line);
+  }
+  if (changes.city !== undefined) {
+    sets.push('city = ?');
+    params.push(changes.city);
+  }
+  if (changes.state !== undefined) {
+    sets.push('state = ?');
+    params.push(changes.state);
+  }
+  if (changes.postal_code !== undefined) {
+    sets.push('postal_code = ?');
+    params.push(changes.postal_code);
+  }
+  if (changes.phone !== undefined) {
+    sets.push('phone = ?');
+    params.push(changes.phone);
+  }
+  if (changes.is_active !== undefined) {
+    sets.push('is_active = ?');
+    params.push(changes.is_active ? 1 : 0);
+  }
+  if (sets.length === 0) return;
+  params.push(centreId, providerId);
+  await db.execute(
+    `UPDATE provider_centres SET ${sets.join(', ')} WHERE id = ? AND provider_id = ?`,
+    params,
+  );
+}
+
 // ---- clinic team (owner-managed) ----
 
 export async function findProvider(db: Db, id: number) {
@@ -84,6 +191,36 @@ export async function setUserStatus(db: Db, userId: number, status: string) {
   await db.execute('UPDATE users SET status = ? WHERE id = ?', [status, userId]);
 }
 
+// ---- caregivers ----
+
+export async function listCaregivers(db: Db, providerId: number) {
+  const [rows] = await db.execute<Row[]>(
+    `SELECT c.id, c.provider_id, c.centre_id, c.full_name, c.role, c.is_active,
+            ce.name AS centre_name
+       FROM provider_caregivers c
+       JOIN provider_centres ce ON ce.id = c.centre_id
+      WHERE c.provider_id = ?
+      ORDER BY ce.name ASC, c.full_name ASC`,
+    [providerId],
+  );
+  return rows;
+}
+
+export async function insertCaregiver(
+  db: Db,
+  providerId: number,
+  centreId: number,
+  fullName: string,
+  role: string,
+): Promise<number> {
+  const [r] = await db.execute<Result>(
+    `INSERT INTO provider_caregivers (provider_id, centre_id, full_name, role)
+     VALUES (?, ?, ?, ?)`,
+    [providerId, centreId, fullName, role],
+  );
+  return r.insertId;
+}
+
 /**
  * Provider-staff accounts a clinic owner may invite, found by email or name.
  * Contact details only — no patient data, no other clinics' information.
@@ -97,4 +234,107 @@ export async function searchStaffAccounts(db: Db, term: string, limit: number) {
     [like, like, limit],
   );
   return rows;
+}
+
+// ---- provider fees ----
+
+export interface ProviderFeeRow extends Row {
+  id: number;
+  provider_id: number;
+  centre_id: number | null;
+  fee_type: string;
+  amount: number;
+  currency: string;
+  is_active: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function listProviderFees(db: Db, providerId: number) {
+  const [rows] = await db.execute<ProviderFeeRow[]>(
+    `SELECT id, provider_id, centre_id, fee_type, amount, currency, is_active, created_at, updated_at
+       FROM provider_fees
+      WHERE provider_id = ?
+      ORDER BY fee_type ASC, centre_id ASC`,
+    [providerId],
+  );
+  return rows;
+}
+
+export async function findProviderFee(db: Db, providerId: number, feeId: number) {
+  const [rows] = await db.execute<ProviderFeeRow[]>(
+    `SELECT id, provider_id, centre_id, fee_type, amount, currency, is_active, created_at, updated_at
+       FROM provider_fees
+      WHERE id = ? AND provider_id = ?`,
+    [feeId, providerId],
+  );
+  return rows[0] ?? null;
+}
+
+export async function insertProviderFee(
+  db: Db,
+  providerId: number,
+  fee: {
+    centre_id: number | null;
+    fee_type: string;
+    amount: number;
+    currency: string;
+    is_active: boolean;
+  },
+): Promise<number> {
+  const [r] = await db.execute<Result>(
+    `INSERT INTO provider_fees (provider_id, centre_id, fee_type, amount, currency, is_active)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [providerId, fee.centre_id, fee.fee_type, fee.amount, fee.currency, fee.is_active ? 1 : 0],
+  );
+  return r.insertId;
+}
+
+export async function updateProviderFee(
+  db: Db,
+  providerId: number,
+  feeId: number,
+  fee: {
+    centre_id?: number | null;
+    fee_type?: string;
+    amount?: number;
+    currency?: string;
+    is_active?: boolean;
+  },
+): Promise<void> {
+  const sets: string[] = [];
+  const params: (string | number | null)[] = [];
+  if (fee.centre_id !== undefined) {
+    sets.push('centre_id = ?');
+    params.push(fee.centre_id);
+  }
+  if (fee.fee_type !== undefined) {
+    sets.push('fee_type = ?');
+    params.push(fee.fee_type);
+  }
+  if (fee.amount !== undefined) {
+    sets.push('amount = ?');
+    params.push(fee.amount);
+  }
+  if (fee.currency !== undefined) {
+    sets.push('currency = ?');
+    params.push(fee.currency);
+  }
+  if (fee.is_active !== undefined) {
+    sets.push('is_active = ?');
+    params.push(fee.is_active ? 1 : 0);
+  }
+  if (sets.length === 0) return;
+  params.push(feeId, providerId);
+  await db.execute(
+    `UPDATE provider_fees SET ${sets.join(', ')} WHERE id = ? AND provider_id = ?`,
+    params,
+  );
+}
+
+export async function deleteProviderFee(db: Db, providerId: number, feeId: number) {
+  await db.execute(`DELETE FROM provider_fees WHERE id = ? AND provider_id = ?`, [
+    feeId,
+    providerId,
+  ]);
 }

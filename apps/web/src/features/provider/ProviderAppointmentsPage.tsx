@@ -20,6 +20,10 @@ const ACTIONS: Partial<
     { verb: AppointmentVerb; label: string; variant?: 'ghost' | 'danger' }[]
   >
 > = {
+  requested: [
+    { verb: 'confirm', label: 'Confirm' },
+    { verb: 'decline', label: 'Decline', variant: 'danger' },
+  ],
   booked: [
     { verb: 'confirm', label: 'Confirm' },
     { verb: 'cancel', label: 'Cancel', variant: 'danger' },

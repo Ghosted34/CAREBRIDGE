@@ -8,7 +8,6 @@ import { JourneyTimeline } from '../../components/Journey';
 import {
   Button,
   Card,
-  EmptyState,
   ErrorNote,
   Field,
   Modal,
@@ -25,7 +24,6 @@ import {
   paymentStatus,
   requestStatus,
   titleCase,
-  urgency,
 } from '../../lib/labels';
 import { formatDateTime, formatTimeRange } from '../../lib/time';
 
@@ -45,10 +43,6 @@ export function RequestDetailPage() {
   );
 
   const request = useQuery({ queryKey: ['requests', id], queryFn: () => api.request(id) });
-  const offers = useQuery({
-    queryKey: ['requests', id, 'offers'],
-    queryFn: () => api.offersForRequest(id),
-  });
   const appointments = useQuery({
     queryKey: ['appointments', 'mine'],
     queryFn: () => api.myAppointments(),
@@ -81,11 +75,6 @@ export function RequestDetailPage() {
     void queryClient.invalidateQueries({ queryKey: ['payments', id] });
   };
 
-  const respond = useMutation({
-    mutationFn: ({ offerId, accept }: { offerId: number; accept: boolean }) =>
-      accept ? api.acceptOffer(offerId) : api.declineOffer(offerId),
-    onSuccess: refresh,
-  });
   const cancel = useMutation({ mutationFn: () => api.cancelRequest(id), onSuccess: refresh });
   const cancelAppt = useMutation({
     mutationFn: (apptId: number) => api.appointmentAction(apptId, 'cancel'),
@@ -157,9 +146,7 @@ export function RequestDetailPage() {
   const nextAppointment = myAppts
     .filter(isUpcoming)
     .sort((a, b) => a.starts_at.localeCompare(b.starts_at))[0];
-  const openOffers = (offers.data?.data ?? []).filter((o) => o.status === 'offered');
   const canCancel = !['completed', 'cancelled'].includes(r.status);
-  const accepted = offers.data?.data.find((o) => o.status === 'accepted');
   const estList = estimates.data?.data ?? [];
   const docList = documents.data?.data ?? [];
   const payList = payments.data?.data ?? [];
@@ -178,7 +165,7 @@ export function RequestDetailPage() {
       />
       {justCreated && (
         <Notice tone="success">
-          Request sent. We’ll show provider offers here as they arrive.
+          Request sent. We’ll show nearby clinics with open slots so you can book directly.
         </Notice>
       )}
 
@@ -191,63 +178,26 @@ export function RequestDetailPage() {
             </p>
           </Card>
 
+          {r.assigned_provider && (
+            <Card>
+              <h2>Your provider</h2>
+              <div className="list-item-title">{r.assigned_provider}</div>
+            </Card>
+          )}
           {r.status === 'submitted' || r.status === 'matching' ? (
             <Card>
-              <h2>Provider offers</h2>
-              {offers.isPending ? (
-                <Spinner />
-              ) : openOffers.length === 0 ? (
-                <EmptyState title="No offers yet">
-                  Verified providers are reviewing your request.
-                </EmptyState>
-              ) : (
-                <ul className="list">
-                  {openOffers.map((o) => (
-                    <li className="list-item" key={o.id}>
-                      <div className="list-item-main">
-                        <div className="list-item-title">{o.provider}</div>
-                        <div className="meta">{o.provider_address}</div>
-                        {o.message && <div className="quote">{o.message}</div>}
-                        <div className="meta">Offered {formatDateTime(o.offered_at)}</div>
-                      </div>
-                      <div className="btn-row">
-                        <Button
-                          busy={
-                            respond.isPending &&
-                            respond.variables?.offerId === o.id &&
-                            respond.variables.accept
-                          }
-                          onClick={() => respond.mutate({ offerId: o.id, accept: true })}
-                        >
-                          Choose
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          onClick={() => respond.mutate({ offerId: o.id, accept: false })}
-                        >
-                          Decline
-                        </Button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <ErrorNote error={respond.error} />
+              <h2>Matching clinics</h2>
+              <p className="muted small">
+                Verified clinics near you are being matched. Once a clinic accepts, you can book
+                your appointment directly.
+              </p>
             </Card>
-          ) : (
-            (accepted || r.assigned_provider) && (
-              <Card>
-                <h2>Your provider</h2>
-                <div className="list-item-title">{accepted?.provider ?? r.assigned_provider}</div>
-                {accepted && <div className="muted small">{accepted.provider_address}</div>}
-              </Card>
-            )
-          )}
+          ) : null}
 
           {BOOKABLE.includes(r.status) && !hasActiveAppointment && (
             <Card>
               <h2>Book an appointment</h2>
-              <BookingForm careRequestId={r.id} providerId={r.assigned_provider_id ?? undefined} />
+              <BookingForm careRequestId={r.id} />
             </Card>
           )}
 
@@ -374,10 +324,6 @@ export function RequestDetailPage() {
           <Card>
             <h2>Your request</h2>
             <dl className="kv">
-              <dt>Urgency</dt>
-              <dd>
-                <Pill tone={urgency[r.urgency].tone}>{urgency[r.urgency].label}</Pill>
-              </dd>
               <dt>Area</dt>
               <dd>{r.preferred_city}</dd>
               <dt>Sent</dt>

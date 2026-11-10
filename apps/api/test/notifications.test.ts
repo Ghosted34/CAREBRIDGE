@@ -11,7 +11,6 @@ import { MAX_ATTEMPTS, processBatch } from '../src/modules/notifications/worker.
 import {
   acceptedRequest,
   api,
-  inHours,
   makeProvider,
   makeRequest,
   makeStaff,
@@ -69,47 +68,10 @@ describe('events create notifications', () => {
     expect(await kinds(unverified.id)).toEqual([]);
   });
 
-  it('offer → patient gets in-app + queued SMS; accept → clinic gets in-app + email', async () => {
-    const { patient, staff } = await acceptedRequest();
-    expect(await kinds(patient.id)).toEqual([
-      'offer_received:in_app:sent',
-      'offer_received:sms:queued',
-    ]);
-    expect(await kinds(staff.id)).toEqual([
-      'new_request:in_app:sent',
-      'offer_accepted:in_app:sent',
-      'offer_accepted:email:queued',
-    ]);
-  });
-
-  it('declined offer → only the person who made it is told', async () => {
-    const patient = await makeUser('patient');
-    const providerId = await makeProvider();
-    const owner = await makeStaff(providerId, 'owner');
-    const clinician = await makeStaff(providerId, 'clinician');
-    const requestId = await makeRequest(patient);
-    const o = await api
-      .post(`/api/v1/requests/${requestId}/offers`)
-      .set(clinician.auth)
-      .send({ provider_id: providerId });
-    await api.post(`/api/v1/offers/${o.body.data.id}/decline`).set(patient.auth);
-    expect(await kinds(clinician.id)).toContain('offer_declined:in_app:sent');
-    expect(await kinds(owner.id)).not.toContain('offer_declined:in_app:sent');
-  });
-
   it('booking, confirming and cancelling notify the other side', async () => {
-    const { patient, staff, requestId } = await acceptedRequest();
-    const b = await api
-      .post('/api/v1/appointments')
-      .set(patient.auth)
-      .send({
-        care_request_id: requestId,
-        starts_at: inHours(2),
-        ends_at: inHours(3),
-        appointment_type: 'assessment',
-      });
-    await api.post(`/api/v1/appointments/${b.body.data.id}/confirm`).set(staff.auth);
-    await api.post(`/api/v1/appointments/${b.body.data.id}/cancel`).set(staff.auth);
+    const { patient, staff, apptId } = await acceptedRequest();
+    await api.post(`/api/v1/appointments/${apptId}/confirm`).set(staff.auth);
+    await api.post(`/api/v1/appointments/${apptId}/cancel`).set(staff.auth);
     expect(await kinds(staff.id)).toContain('appointment_booked_provider:email:queued');
     const p = await kinds(patient.id);
     expect(p).toContain('appointment_confirmed:sms:queued');
@@ -123,17 +85,10 @@ describe('events create notifications', () => {
     expect(await kinds(patient.id)).toContain('request_progress:in_app:sent');
   });
 
-  it('cancelling a request tells clinics with open offers and the assigned clinic', async () => {
-    const patient = await makeUser('patient');
-    const pA = await makeProvider();
-    const staffA = await makeStaff(pA);
-    const requestId = await makeRequest(patient);
-    await api
-      .post(`/api/v1/requests/${requestId}/offers`)
-      .set(staffA.auth)
-      .send({ provider_id: pA });
+  it('cancelling a request tells the assigned clinic', async () => {
+    const { patient, staff, requestId } = await acceptedRequest();
     await api.post(`/api/v1/requests/${requestId}/cancel`).set(patient.auth);
-    expect(await kinds(staffA.id)).toContain('request_cancelled:in_app:sent');
+    expect(await kinds(staff.id)).toContain('request_cancelled:in_app:sent');
   });
 
   it('approving a pending staff account sends account_approved', async () => {
@@ -153,39 +108,33 @@ describe('events create notifications', () => {
     const secret = 'Severe pain lower left molar, possible abscess';
     const patient = await makeUser('patient');
     const providerId = await makeProvider();
-    const staff = await makeStaff(providerId);
-    const r = await api
+    const _staff = await makeStaff(providerId);
+    const _r = await api
       .post('/api/v1/requests')
       .set(patient.auth)
       .send(requestBody({ description: secret, service_type: 'Root canal assessment' }));
-    await api
-      .post(`/api/v1/requests/${r.body.data.id}/offers`)
-      .set(staff.auth)
-      .send({ provider_id: providerId });
     const stored = JSON.stringify(await rows());
     expect(stored).not.toContain('molar');
     expect(stored).not.toContain('Root canal');
     const inbox = await api.get('/api/v1/notifications').set(patient.auth);
     expect(JSON.stringify(inbox.body)).not.toContain('molar');
-    await expect(
-      notify(pool, [patient.id], 'offer_received', { description: 'x' }),
-    ).rejects.toThrow(/must not contain/);
+    await expect(notify(pool, [patient.id], 'new_request', { description: 'x' })).rejects.toThrow(
+      /must not contain/,
+    );
   });
 });
 
 describe('inbox endpoints', () => {
   it('lists rendered in-app notifications, counts unread, marks read', async () => {
-    const { patient } = await acceptedRequest();
+    const { patient, staff, apptId } = await acceptedRequest();
+    await api.post(`/api/v1/appointments/${apptId}/confirm`).set(staff.auth);
     const inbox = await api.get('/api/v1/notifications').set(patient.auth);
     expect(inbox.status).toBe(200);
     expect(inbox.body.data).toHaveLength(1); // SMS rows are not part of the inbox
     expect(inbox.body.data[0]).toMatchObject({
-      type: 'offer_received',
-      title: 'A provider has responded',
-      link: expect.stringMatching(/^\/patient\/requests\/\d+$/),
+      type: 'appointment_confirmed',
       read_at: null,
     });
-    expect(inbox.body.data[0].body).toMatch(/Clinic \d+ has offered/);
     expect(
       (await api.get('/api/v1/notifications/unread-count').set(patient.auth)).body.data.count,
     ).toBe(1);
@@ -222,15 +171,10 @@ describe('worker', () => {
     const sms = recordingProvider('sms');
     const email = recordingProvider('email');
     const r = await processBatch({ sms, email });
-    expect(r).toEqual({ sent: 2, retrying: 0, failed: 0, skipped: 0 });
-    expect(sms.sent[0]!.text).toMatch(
-      /^CareBridge: a verified provider has responded to your request #\d+/,
-    );
-    expect(sms.sent[0]!.to).toMatch(/^\+234/);
-    expect(email.sent[0]!.text).toMatch(
-      /Open CareBridge: http:\/\/localhost:3000\/provider\/patients/,
-    );
-    expect((await rows("channel <> 'in_app'")).map((x) => x.status)).toEqual(['sent', 'sent']);
+    expect(r).toEqual({ sent: 1, retrying: 0, failed: 0, skipped: 0 });
+    expect(sms.sent).toEqual([]);
+    expect(email.sent[0]!.text).toMatch(/A patient booked/);
+    expect((await rows("channel <> 'in_app'")).map((x) => x.status)).toEqual(['sent']);
     expect(await processBatch({ sms, email })).toEqual({
       sent: 0,
       retrying: 0,
@@ -240,47 +184,53 @@ describe('worker', () => {
   });
 
   it('retries failures with backoff, then gives up after MAX_ATTEMPTS', async () => {
-    const { patient } = await acceptedRequest();
+    await acceptedRequest();
     const broken = {
       sms: recordingProvider('sms', 'retryable'),
       email: recordingProvider('email', 'retryable'),
     };
     const r = await processBatch(broken);
-    expect(r.retrying).toBe(2);
-    const [sms] = await rows("user_id = ? AND channel = 'sms'", [patient.id]);
-    expect(sms).toMatchObject({
+    expect(r.retrying).toBe(1); // only 1 email notification queued
+    const [email] = await rows("channel = 'email'");
+    expect(email).toMatchObject({
       status: 'queued',
       attempts: 1,
       last_error: 'provider unavailable',
     });
-    expect(sms!.next_attempt_at).not.toBeNull();
+    expect(email!.next_attempt_at).not.toBeNull();
     // Not picked up again before its retry time
     expect((await processBatch(broken)).retrying).toBe(0);
     // Last allowed attempt fails → failed
     await pool.execute(
       'UPDATE notifications SET attempts = ?, next_attempt_at = NULL WHERE id = ?',
-      [MAX_ATTEMPTS - 1, sms!.id],
+      [MAX_ATTEMPTS - 1, email!.id],
     );
-    await processBatch({ sms: broken.sms, email: null });
-    const [after] = await rows('id = ?', [sms!.id]);
+    await processBatch({ sms: null, email: broken.email });
+    const [after] = await rows('id = ?', [email!.id]);
     expect(after).toMatchObject({ status: 'failed', attempts: MAX_ATTEMPTS });
   });
 
   it('a permanent provider error fails at once without retrying', async () => {
     await acceptedRequest();
-    const r = await processBatch({ sms: recordingProvider('sms', 'permanent'), email: null });
+    const r = await processBatch({
+      sms: recordingProvider('sms', 'permanent'),
+      email: recordingProvider('email', 'permanent'),
+    });
     expect(r).toMatchObject({ failed: 1, retrying: 0 });
-    const [sms] = await rows("channel = 'sms'");
-    expect(sms).toMatchObject({ status: 'failed', attempts: 1, last_error: 'invalid number' });
+    const [failed] = await rows("status = 'failed'");
+    expect(failed).toMatchObject({ attempts: 1, last_error: 'invalid number' });
   });
 
   it('skips switched-off channels and suspended users', async () => {
-    const { patient } = await acceptedRequest();
-    await pool.execute(`UPDATE users SET status = 'suspended' WHERE id = ?`, [patient.id]);
-    const r = await processBatch({ sms: recordingProvider('sms'), email: null });
-    expect(r).toEqual({ sent: 0, retrying: 0, failed: 0, skipped: 2 });
+    const { staff } = await acceptedRequest();
+    await pool.execute(`UPDATE users SET status = 'suspended' WHERE id = ?`, [staff.id]);
+    const r = await processBatch({
+      sms: recordingProvider('sms'),
+      email: recordingProvider('email'),
+    });
+    expect(r).toEqual({ sent: 0, retrying: 0, failed: 0, skipped: 1 });
     expect((await rows("channel <> 'in_app'")).map((x) => x.last_error)).toEqual(
-      expect.arrayContaining(['user suspended', 'email channel is switched off']),
+      expect.arrayContaining(['user suspended']),
     );
   });
 

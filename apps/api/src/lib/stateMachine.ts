@@ -15,14 +15,8 @@ export const transitions = {
     completed: [],
     cancelled: [],
   },
-  provider_offer: {
-    offered: ['accepted', 'declined', 'expired', 'withdrawn'],
-    accepted: [],
-    declined: [],
-    expired: [],
-    withdrawn: [],
-  },
   appointment: {
+    requested: ['confirmed', 'cancelled'],
     booked: ['confirmed', 'cancelled'],
     confirmed: ['checked_in', 'cancelled', 'no_show'],
     checked_in: ['completed'],

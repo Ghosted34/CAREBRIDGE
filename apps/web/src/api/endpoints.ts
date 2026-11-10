@@ -5,10 +5,13 @@ import type {
   AdminUser,
   AppNotification,
   Appointment,
+  AppointmentMode,
   AppointmentType,
   AssignedRequest,
   AuditLog,
   CareRequest,
+  Caregiver,
+  Centre,
   ClinicRegistration,
   CareRequestSummary,
   ClinicalDocument,
@@ -22,13 +25,13 @@ import type {
   MatchingProvider,
   Me,
   Metrics,
-  Offer,
   PaymentInitResult,
   PaymentRecord,
   Policy,
   Provider,
+  PatientKYC,
+  ProviderFee,
   ProviderMember,
-  ProviderOffer,
   ProviderRole,
   ProviderSchedule,
   ProviderSlot,
@@ -62,8 +65,13 @@ export const api = {
     accept_terms: boolean;
     accept_privacy: boolean;
     marketing_opt_in: boolean;
+    /** Patient KYC: structured address, DOB, gender, ID number, emergency contact. */
+    kyc?: PatientKYC;
     /** Facility details when a clinic registers itself; the provider starts `pending`. */
-    clinic?: ClinicRegistration;
+    clinic?: ClinicRegistration & {
+      cac_number: string;
+      tax_id: string;
+    };
   }) =>
     post<Envelope<{ id: number; role: string; status: UserStatus; provider_id?: number }>>(
       '/auth/register',
@@ -132,45 +140,141 @@ export const api = {
   progressRequest: (id: number, step: JourneyStep) =>
     post<Envelope<{ id: number; status: RequestStatus }>>(`/requests/${id}/${step}`),
 
-  // offers
-  makeOffer: (requestId: number, body: { provider_id: number; message?: string }) =>
-    post<Envelope<{ id: number }>>(`/requests/${requestId}/offers`, body),
-  offersForRequest: (requestId: number) => get<Envelope<Offer[]>>(`/requests/${requestId}/offers`),
-  acceptOffer: (id: number) => post<Envelope<{ id: number }>>(`/offers/${id}/accept`),
-  declineOffer: (id: number) => post<Envelope<{ id: number }>>(`/offers/${id}/decline`),
-  withdrawOffer: (id: number) => post<Envelope<{ id: number }>>(`/offers/${id}/withdraw`),
-  myOffers: (p: { provider_id?: number } = {}) =>
-    get<ListEnvelope<ProviderOffer>>(`/offers/mine${qs(p)}`),
-
   // appointments
   book: (body: {
     care_request_id: number;
+    provider_id: number;
+    centre_id?: number;
     starts_at: string;
     ends_at: string;
     appointment_type: AppointmentType;
+    appointment_mode?: AppointmentMode;
     slot_id?: number;
-  }) => post<Envelope<{ id: number }>>('/appointments', body),
+    caregiver_id?: number;
+  }) => post<Envelope<{ id: number; provider_id: number; status: string }>>('/appointments', body),
   myAppointments: (p: { provider_id?: number } = {}) =>
     get<ListEnvelope<Appointment>>(`/appointments/mine${qs(p)}`),
   appointmentAction: (id: number, verb: AppointmentVerb) =>
     post<Envelope<{ id: number }>>(`/appointments/${id}/${verb}`),
+  updateRequestProvider: (id: number, body: { provider_id: number; centre_id?: number }) =>
+    post<Envelope<{ id: number; provider_id: number; status: string }>>(
+      `/appointments/${id}/provider`,
+      body,
+    ),
 
   // capacity & slots
   providerSchedules: (providerId: number) =>
     get<Envelope<ProviderSchedule[]>>(`/providers/${providerId}/schedules`),
+  providerSchedulesByCentre: (providerId: number, centreId: number) =>
+    get<Envelope<ProviderSchedule[]>>(`/providers/${providerId}/centres/${centreId}/schedules`),
   setProviderSchedules: (
     providerId: number,
-    schedules: Array<Omit<ProviderSchedule, 'id' | 'provider_id'>>,
-  ) => put<Envelope<ProviderSchedule[]>>(`/providers/${providerId}/schedules`, { schedules }),
+    centreId: number,
+    schedules: Array<Omit<ProviderSchedule, 'id' | 'provider_id' | 'centre_id'>>,
+  ) =>
+    put<Envelope<ProviderSchedule[]>>(`/providers/${providerId}/schedules`, {
+      centre_id: centreId,
+      schedules,
+    }),
   providerSlots: (
     providerId: number,
     query: { from?: string; to?: string; status?: SlotStatus } = {},
   ) => get<Envelope<ProviderSlot[]>>(`/providers/${providerId}/slots${qs(query)}`),
-  createSlot: (providerId: number, body: { start_time: string; end_time: string }) =>
-    post<Envelope<ProviderSlot>>(`/providers/${providerId}/slots`, body),
-  generateSlots: (providerId: number, body: { start_date: string; end_date: string }) =>
-    post<Envelope<{ created_count: number }>>(`/providers/${providerId}/slots/generate`, body),
+  createSlot: (
+    providerId: number,
+    body: { centre_id: number; start_time: string; end_time: string },
+  ) => post<Envelope<ProviderSlot>>(`/providers/${providerId}/slots`, body),
+  generateSlots: (
+    providerId: number,
+    centreId: number,
+    body: { start_date: string; end_date: string },
+  ) =>
+    post<Envelope<{ created_count: number }>>(`/providers/${providerId}/slots/generate`, {
+      centre_id: centreId,
+      ...body,
+    }),
   cancelSlot: (id: number) => post<Envelope<ProviderSlot>>(`/slots/${id}/cancel`),
+  updateSlotPrice: (id: number, body: { price: number; currency: string }) =>
+    post<Envelope<ProviderSlot>>(`/slots/${id}/price`, body),
+  centreSlots: (
+    centreId: number,
+    query: { from?: string; to?: string; status?: SlotStatus } = {},
+  ) => get<Envelope<ProviderSlot[]>>(`/centres/${centreId}/slots${qs(query)}`),
+
+  // operating centres (owner-managed)
+  centres: (providerId: number, careRequestId?: number) =>
+    get<Envelope<Centre[]>>(
+      `/providers/${providerId}/centres${qs({ care_request_id: careRequestId })}`,
+    ),
+  createCentre: (
+    providerId: number,
+    body: {
+      name: string;
+      address_line: string;
+      city: string;
+      state: string;
+      postal_code: string;
+      phone?: string;
+    },
+  ) => post<Envelope<Centre>>(`/providers/${providerId}/centres`, body),
+  updateCentre: (
+    providerId: number,
+    centreId: number,
+    body: Partial<{
+      name: string;
+      address_line: string;
+      city: string;
+      state: string;
+      postal_code: string;
+      phone: string | null;
+      is_active: boolean;
+    }>,
+  ) => post<Envelope<Centre>>(`/providers/${providerId}/centres/${centreId}`, body),
+
+  // caregivers (owner-managed)
+  caregivers: (providerId: number, careRequestId?: number) =>
+    get<Envelope<Caregiver[]>>(
+      `/providers/${providerId}/caregivers${qs({ care_request_id: careRequestId })}`,
+    ),
+  createCaregiver: (
+    providerId: number,
+    body: {
+      centre_id: number;
+      full_name: string;
+      role: 'dentist' | 'caregiver' | 'hygienist' | 'specialist';
+    },
+  ) => post<Envelope<Caregiver>>(`/providers/${providerId}/caregivers`, body),
+
+  // provider fees (customizable priced slots)
+  providerFees: (providerId: number) =>
+    get<Envelope<ProviderFee[]>>(`/providers/${providerId}/fees`),
+  setProviderFee: (
+    providerId: number,
+    body: {
+      centre_id?: number | null;
+      fee_type: ProviderFee['fee_type'];
+      amount: number;
+      currency?: string;
+      is_active?: boolean;
+    },
+  ) => post<Envelope<ProviderFee>>(`/providers/${providerId}/fees`, body),
+  updateProviderFee: (
+    providerId: number,
+    feeId: number,
+    body: Partial<{
+      centre_id: number | null;
+      fee_type: ProviderFee['fee_type'];
+      amount: number;
+      currency: string;
+      is_active: boolean;
+    }>,
+  ) => put<Envelope<ProviderFee>>(`/providers/${providerId}/fees/${feeId}`, body),
+  deleteProviderFee: (providerId: number, feeId: number) =>
+    request<Envelope<{ removed: boolean }>>('DELETE', `/providers/${providerId}/fees/${feeId}`),
+
+  // patient KYC
+  patientKYC: () => get<Envelope<PatientKYC>>('/patient/kyc'),
+  updatePatientKYC: (body: PatientKYC) => post<Envelope<PatientKYC>>('/patient/kyc', body),
 
   // matching
   matchesForRequest: (requestId: number) =>
@@ -279,4 +383,5 @@ export const api = {
 };
 
 export type JourneyStep = 'start-assessment' | 'plan-treatment' | 'start-treatment' | 'complete';
-export type AppointmentVerb = 'confirm' | 'check-in' | 'complete' | 'no-show' | 'cancel';
+export type AppointmentVerb =
+  'confirm' | 'decline' | 'check-in' | 'complete' | 'no-show' | 'cancel';

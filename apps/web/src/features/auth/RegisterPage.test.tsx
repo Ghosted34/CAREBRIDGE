@@ -50,6 +50,8 @@ describe('RegisterPage', () => {
       'Lekki Smile Clinic Ltd',
     );
     await userEvent.type(within(facility).getByLabelText(/Registration number/), 'MDCN/R/12345');
+    await userEvent.type(within(facility).getByLabelText(/CAC number/), 'RC-123456');
+    await userEvent.type(within(facility).getByLabelText(/Tax ID/), 'TIN-12345678-001');
     await userEvent.type(within(facility).getByLabelText('Address'), '4 Admiralty Way, Lekki');
     await userEvent.clear(within(facility).getByLabelText(/Specialties/));
     await userEvent.type(within(facility).getByLabelText(/Specialties/), 'Oral surgery, dentistry');
@@ -73,6 +75,8 @@ describe('RegisterPage', () => {
         display_name: 'Lekki Smile Clinic',
         provider_type: 'clinic',
         registration_number: 'MDCN/R/12345',
+        cac_number: 'RC-123456',
+        tax_id: 'TIN-12345678-001',
         city: 'Lagos',
         address: '4 Admiralty Way, Lekki',
         specialties: ['oral_surgery', 'dentistry'],

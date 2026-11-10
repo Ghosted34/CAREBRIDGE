@@ -9,11 +9,39 @@ export async function insertUser(
     password_hash: string;
     role: string;
     status: string;
+    address_street?: string | null;
+    address_city?: string | null;
+    address_state?: string | null;
+    address_postal?: string | null;
+    date_of_birth?: string | null;
+    gender?: string | null;
+    id_number?: string | null;
+    emergency_contact_name?: string | null;
+    emergency_contact_phone?: string | null;
   },
 ) {
   const [r] = await db.execute<Result>(
-    `INSERT INTO users(full_name, email, phone, password_hash, role, status) VALUES (?, ?, ?, ?, ?, ?)`,
-    [u.full_name, u.email, u.phone, u.password_hash, u.role, u.status],
+    `INSERT INTO users(full_name, email, phone, password_hash, role, status,
+       address_street, address_city, address_state, address_postal,
+       date_of_birth, gender, id_number, emergency_contact_name, emergency_contact_phone)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      u.full_name,
+      u.email,
+      u.phone,
+      u.password_hash,
+      u.role,
+      u.status,
+      u.address_street ?? null,
+      u.address_city ?? null,
+      u.address_state ?? null,
+      u.address_postal ?? null,
+      u.date_of_birth ?? null,
+      u.gender ?? null,
+      u.id_number ?? null,
+      u.emergency_contact_name ?? null,
+      u.emergency_contact_phone ?? null,
+    ],
   );
   return r.insertId;
 }
@@ -26,6 +54,8 @@ export async function insertPendingProvider(
     display_name: string;
     provider_type: string;
     registration_number: string;
+    cac_number: string;
+    tax_id: string;
     city: string;
     address: string;
     specialties: string[];
@@ -34,13 +64,15 @@ export async function insertPendingProvider(
 ) {
   const [r] = await db.execute<Result>(
     `INSERT INTO providers(legal_name, display_name, provider_type, registration_number,
-       verification_status, status, city, address, specialties, services)
-     VALUES (?, ?, ?, ?, 'pending', 'active', ?, ?, ?, ?)`,
+       cac_number, tax_id, verification_status, status, city, address, specialties, services)
+     VALUES (?, ?, ?, ?, ?, ?, 'pending', 'active', ?, ?, ?, ?)`,
     [
       p.legal_name,
       p.display_name,
       p.provider_type,
       p.registration_number,
+      p.cac_number,
+      p.tax_id,
       p.city,
       p.address,
       JSON.stringify(p.specialties),

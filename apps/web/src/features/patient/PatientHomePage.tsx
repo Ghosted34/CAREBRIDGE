@@ -3,7 +3,7 @@ import { Link } from 'react-router';
 import { api } from '../../api/endpoints';
 import { useAuth } from '../../auth/authContext';
 import { Card, EmptyState, ErrorNote, PageHeader, Pill, Spinner } from '../../components/ui';
-import { requestStatus, titleCase, urgency } from '../../lib/labels';
+import { requestStatus, titleCase } from '../../lib/labels';
 import { formatDate } from '../../lib/time';
 
 export function PatientHomePage() {
@@ -49,7 +49,6 @@ export function PatientHomePage() {
                         <span>#{r.id}</span>
                         <span>Requested {formatDate(r.created_at)}</span>
                         {r.assigned_provider && <span>with {r.assigned_provider}</span>}
-                        <Pill tone={urgency[r.urgency].tone}>{urgency[r.urgency].label}</Pill>
                       </div>
                       <div className="small muted">{s.hint}</div>
                     </div>

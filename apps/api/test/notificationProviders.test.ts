@@ -45,7 +45,7 @@ describe('Termii adapter', () => {
     const r = await sms.send({
       to: '+234 801 234 5678',
       subject: 'ignored',
-      text: 'CareBridge: hello',
+      text: 'CareLynk: hello',
     });
     expect(r).toEqual({ providerMessageId: '3017544054459083819856413' });
 
@@ -56,7 +56,7 @@ describe('Termii adapter', () => {
       api_key: 'TLtestkey1234567890',
       to: '2348012345678',
       from: 'CareBridge',
-      sms: 'CareBridge: hello',
+      sms: 'CareLynk: hello',
       type: 'plain',
       channel: 'dnd', // transactional route by default
     });
@@ -176,7 +176,16 @@ describe('worker + Termii end to end (HTTP faked)', () => {
   afterAll(() => pool.end());
 
   it('sends the queued SMS through Termii and stores its message id', async () => {
-    await acceptedRequest();
+    const { patient } = await acceptedRequest();
+    // Queue an SMS notification for the patient (acceptedRequest only queues an email to staff)
+    await pool.execute(
+      `INSERT INTO notifications(user_id, channel, template_key, status, attempts, next_attempt_at, payload)
+       VALUES (?, 'sms', 'appointment_confirmed', 'queued', 0, NULL, ?)`,
+      [
+        patient.id,
+        JSON.stringify({ provider: 'Test Clinic', starts_at: '2026-11-10T09:00:00+01:00' }),
+      ],
+    );
     const fetchFn = fakeFetch(200, {
       code: 'ok',
       message_id: '42',
@@ -195,6 +204,6 @@ describe('worker + Termii end to end (HTTP faked)', () => {
     const body = JSON.parse(
       String((fetchFn.mock.calls[0] as unknown as [string, RequestInit])[1].body),
     );
-    expect(body.sms).toMatch(/^CareBridge: a verified provider has responded to your request #\d+/);
+    expect(body.sms).toMatch(/^CareLynk: Test Clinic confirmed your appointment on/);
   });
 });
