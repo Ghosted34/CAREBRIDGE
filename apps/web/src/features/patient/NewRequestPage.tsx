@@ -78,6 +78,13 @@ export function NewRequestPage() {
             setCareRequestId(null);
             navigate('/patient', { replace: true });
           }}
+          onCancel={() => {
+            // Patient abandoned the booking flow: cancel the incomplete care request
+            // and create a fresh one so they can start over cleanly.
+            setShowBooking(false);
+            setCareRequestId(null);
+            create.mutate();
+          }}
         />
       </>
     );

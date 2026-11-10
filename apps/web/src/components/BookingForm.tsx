@@ -27,11 +27,13 @@ type Step = 'problem' | 'provider' | 'centre' | 'slot' | 'confirm';
 export function BookingForm({
   careRequestId,
   onBooked,
+  onCancel,
   defaultProblem,
   defaultDate,
 }: {
   careRequestId: number;
   onBooked?: () => void;
+  onCancel?: () => void;
   defaultProblem?: string;
   defaultDate?: string;
 }) {
@@ -118,6 +120,14 @@ export function BookingForm({
       void queryClient.invalidateQueries({ queryKey: ['matches'] });
       onBooked?.();
       navigate(`/patient/requests/${careRequestId}`, { replace: true });
+    },
+  });
+
+  const cancelRequest = useMutation({
+    mutationFn: () => api.cancelRequest(careRequestId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['requests'] });
+      onCancel?.();
     },
   });
 
@@ -383,8 +393,11 @@ export function BookingForm({
             <Button
               type="button"
               variant="ghost"
-              onClick={() => setStep('problem')}
-              busy={book.isPending}
+              onClick={() => {
+                cancelRequest.mutate();
+                setStep('problem');
+              }}
+              busy={book.isPending || cancelRequest.isPending}
             >
               Start over
             </Button>
