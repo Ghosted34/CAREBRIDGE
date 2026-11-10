@@ -25,7 +25,6 @@ import type {
   MatchingProvider,
   Me,
   Metrics,
-  Offer,
   PaymentInitResult,
   PaymentRecord,
   Policy,
@@ -33,7 +32,6 @@ import type {
   PatientKYC,
   ProviderFee,
   ProviderMember,
-  ProviderOffer,
   ProviderRole,
   ProviderSchedule,
   ProviderSlot,
@@ -141,16 +139,6 @@ export const api = {
     get<ListEnvelope<AssignedRequest>>(`/requests/assigned${qs(p)}`),
   progressRequest: (id: number, step: JourneyStep) =>
     post<Envelope<{ id: number; status: RequestStatus }>>(`/requests/${id}/${step}`),
-
-  // offers
-  makeOffer: (requestId: number, body: { provider_id: number; message?: string }) =>
-    post<Envelope<{ id: number }>>(`/requests/${requestId}/offers`, body),
-  offersForRequest: (requestId: number) => get<Envelope<Offer[]>>(`/requests/${requestId}/offers`),
-  acceptOffer: (id: number) => post<Envelope<{ id: number }>>(`/offers/${id}/accept`),
-  declineOffer: (id: number) => post<Envelope<{ id: number }>>(`/offers/${id}/decline`),
-  withdrawOffer: (id: number) => post<Envelope<{ id: number }>>(`/offers/${id}/withdraw`),
-  myOffers: (p: { provider_id?: number } = {}) =>
-    get<ListEnvelope<ProviderOffer>>(`/offers/mine${qs(p)}`),
 
   // appointments
   book: (body: {

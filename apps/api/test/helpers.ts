@@ -17,7 +17,6 @@ const TABLES = [
   'service_estimates',
   'clinical_referrals',
   'appointments',
-  'provider_offers',
   'care_requests',
   'provider_users',
   'providers',
@@ -151,18 +150,28 @@ export async function completeVisit(patient: TestUser, staff: TestUser, requestI
   return id;
 }
 
-/** Patient request → provider offer → patient accepts. Returns ids for booking tests. */
+/** Patient request → patient books appointment → staff confirms. Returns ids for booking tests. */
 export async function acceptedRequest() {
   const patient = await makeUser('patient');
   const providerId = await makeProvider();
   const staff = await makeStaff(providerId, 'owner');
   const requestId = await makeRequest(patient);
-  const offer = await api
-    .post(`/api/v1/requests/${requestId}/offers`)
-    .set(staff.auth)
-    .send({ provider_id: providerId });
-  await api.post(`/api/v1/offers/${offer.body.data.id}/accept`).set(patient.auth);
-  return { patient, providerId, staff, requestId, offerId: offer.body.data.id as number };
+  const booked = await api
+    .post('/api/v1/appointments')
+    .set(patient.auth)
+    .send({
+      care_request_id: requestId,
+      starts_at: inHours(2),
+      ends_at: inHours(3),
+      appointment_type: 'assessment',
+    });
+  if (booked.status !== 201)
+    throw new Error(
+      `acceptedRequest booking failed: ${booked.status} ${JSON.stringify(booked.body)}`,
+    );
+  const apptId = booked.body.data.id as number;
+  await api.post(`/api/v1/appointments/${apptId}/confirm`).set(staff.auth);
+  return { patient, providerId, staff, requestId, apptId };
 }
 
 export async function auditActions(entityType: string, entityId: number) {

@@ -69,34 +69,6 @@ describe('events create notifications', () => {
     expect(await kinds(unverified.id)).toEqual([]);
   });
 
-  it('offer → patient gets in-app + queued SMS; accept → clinic gets in-app + email', async () => {
-    const { patient, staff } = await acceptedRequest();
-    expect(await kinds(patient.id)).toEqual([
-      'offer_received:in_app:sent',
-      'offer_received:sms:queued',
-    ]);
-    expect(await kinds(staff.id)).toEqual([
-      'new_request:in_app:sent',
-      'offer_accepted:in_app:sent',
-      'offer_accepted:email:queued',
-    ]);
-  });
-
-  it('declined offer → only the person who made it is told', async () => {
-    const patient = await makeUser('patient');
-    const providerId = await makeProvider();
-    const owner = await makeStaff(providerId, 'owner');
-    const clinician = await makeStaff(providerId, 'clinician');
-    const requestId = await makeRequest(patient);
-    const o = await api
-      .post(`/api/v1/requests/${requestId}/offers`)
-      .set(clinician.auth)
-      .send({ provider_id: providerId });
-    await api.post(`/api/v1/offers/${o.body.data.id}/decline`).set(patient.auth);
-    expect(await kinds(clinician.id)).toContain('offer_declined:in_app:sent');
-    expect(await kinds(owner.id)).not.toContain('offer_declined:in_app:sent');
-  });
-
   it('booking, confirming and cancelling notify the other side', async () => {
     const { patient, staff, requestId } = await acceptedRequest();
     const b = await api
@@ -123,15 +95,11 @@ describe('events create notifications', () => {
     expect(await kinds(patient.id)).toContain('request_progress:in_app:sent');
   });
 
-  it('cancelling a request tells clinics with open offers and the assigned clinic', async () => {
+  it('cancelling a request tells the assigned clinic', async () => {
     const patient = await makeUser('patient');
     const pA = await makeProvider();
     const staffA = await makeStaff(pA);
     const requestId = await makeRequest(patient);
-    await api
-      .post(`/api/v1/requests/${requestId}/offers`)
-      .set(staffA.auth)
-      .send({ provider_id: pA });
     await api.post(`/api/v1/requests/${requestId}/cancel`).set(patient.auth);
     expect(await kinds(staffA.id)).toContain('request_cancelled:in_app:sent');
   });
@@ -158,17 +126,13 @@ describe('events create notifications', () => {
       .post('/api/v1/requests')
       .set(patient.auth)
       .send(requestBody({ description: secret, service_type: 'Root canal assessment' }));
-    await api
-      .post(`/api/v1/requests/${r.body.data.id}/offers`)
-      .set(staff.auth)
-      .send({ provider_id: providerId });
     const stored = JSON.stringify(await rows());
     expect(stored).not.toContain('molar');
     expect(stored).not.toContain('Root canal');
     const inbox = await api.get('/api/v1/notifications').set(patient.auth);
     expect(JSON.stringify(inbox.body)).not.toContain('molar');
     await expect(
-      notify(pool, [patient.id], 'offer_received', { description: 'x' }),
+      notify(pool, [patient.id], 'new_request', { description: 'x' }),
     ).rejects.toThrow(/must not contain/);
   });
 });
@@ -180,12 +144,9 @@ describe('inbox endpoints', () => {
     expect(inbox.status).toBe(200);
     expect(inbox.body.data).toHaveLength(1); // SMS rows are not part of the inbox
     expect(inbox.body.data[0]).toMatchObject({
-      type: 'offer_received',
-      title: 'A provider has responded',
-      link: expect.stringMatching(/^\/patient\/requests\/\d+$/),
+      type: 'appointment_confirmed',
       read_at: null,
     });
-    expect(inbox.body.data[0].body).toMatch(/Clinic \d+ has offered/);
     expect(
       (await api.get('/api/v1/notifications/unread-count').set(patient.auth)).body.data.count,
     ).toBe(1);
@@ -224,11 +185,11 @@ describe('worker', () => {
     const r = await processBatch({ sms, email });
     expect(r).toEqual({ sent: 2, retrying: 0, failed: 0, skipped: 0 });
     expect(sms.sent[0]!.text).toMatch(
-      /^CareBridge: a verified provider has responded to your request #\d+/,
+      /^CareBridge: .+ has confirmed your appointment on/,
     );
     expect(sms.sent[0]!.to).toMatch(/^\+234/);
     expect(email.sent[0]!.text).toMatch(
-      /Open CareBridge: http:\/\/localhost:3000\/provider\/patients/,
+      /Open CareBridge: .*provider\/patients/,
     );
     expect((await rows("channel <> 'in_app'")).map((x) => x.status)).toEqual(['sent', 'sent']);
     expect(await processBatch({ sms, email })).toEqual({

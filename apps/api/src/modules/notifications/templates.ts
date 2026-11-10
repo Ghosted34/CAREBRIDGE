@@ -45,28 +45,6 @@ const STEP_TEXT: Record<string, string> = {
 };
 
 export const TEMPLATES = {
-  offer_received: {
-    channels: ['in_app', 'sms'],
-    title: () => 'A provider has responded',
-    body: (p) =>
-      `${p.provider} has offered to see you for request #${p.request_id}. Review and choose.`,
-    sms: (p) =>
-      `CareBridge: a verified provider has responded to your request #${p.request_id}. Open the app to review.`,
-    link: (p) => `/patient/requests/${p.request_id}`,
-  },
-  offer_accepted: {
-    channels: ['in_app', 'email'],
-    title: () => 'A patient chose your offer',
-    body: (p) =>
-      `The patient for request #${p.request_id} chose ${p.provider}. Please book their first appointment.`,
-    link: () => '/provider/patients',
-  },
-  offer_declined: {
-    channels: ['in_app'],
-    title: () => 'Offer declined',
-    body: (p) => `The patient for request #${p.request_id} declined the offer from ${p.provider}.`,
-    link: () => '/provider/offers',
-  },
   new_request: {
     channels: ['in_app'],
     title: () => 'New request in your queue',

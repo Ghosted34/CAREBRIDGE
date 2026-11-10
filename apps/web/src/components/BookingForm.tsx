@@ -53,7 +53,7 @@ export function BookingForm({
     enabled: step === 'provider' && date !== '',
   });
 
-  const { data: centres } = useQuery({
+  const { data: centres, isPending: centresPending } = useQuery({
     queryKey: ['centres', selectedProvider?.provider_id],
     queryFn: () =>
       selectedProvider ? api.centres(selectedProvider.provider_id) : Promise.resolve({ data: [] }),
@@ -259,6 +259,7 @@ export function BookingForm({
   }
 
   if (step === 'centre') {
+    if (centresPending) return <Spinner label="Loading locations" />;
     return (
       <>
         <PageHeader
@@ -272,8 +273,9 @@ export function BookingForm({
         </div>
         <Card>
           {centres?.data?.length === 0 ? (
-            <EmptyState title="No locations">
-              This clinic has no operating centres listed yet.
+            <EmptyState title="No locations configured">
+              This clinic has no operating centres yet. Set up operating hours in Clinic Capacity &
+              Slots, then come back to pick a location.
             </EmptyState>
           ) : (
             <ul className="list">

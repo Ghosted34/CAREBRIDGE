@@ -14,7 +14,6 @@ export type RequestStatus =
   | 'in_progress'
   | 'completed'
   | 'cancelled';
-export type OfferStatus = 'offered' | 'accepted' | 'declined' | 'expired' | 'withdrawn';
 export type AppointmentStatus =
   'requested' | 'booked' | 'confirmed' | 'checked_in' | 'completed' | 'cancelled' | 'no_show';
 export type AppointmentType =
@@ -119,32 +118,6 @@ export interface AssignedRequest extends QueueItem {
    * Clinical governance: estimates, referrals and treatment planning need at least one.
    */
   assessments_completed: number;
-}
-
-export interface Offer {
-  id: number;
-  provider_id: number;
-  provider: string;
-  provider_address: string;
-  message: string | null;
-  status: OfferStatus;
-  offered_at: string;
-  responded_at: string | null;
-}
-
-export interface ProviderOffer {
-  id: number;
-  care_request_id: number;
-  provider_id: number;
-  provider: string;
-  message: string | null;
-  status: OfferStatus;
-  offered_at: string;
-  responded_at: string | null;
-  specialty: string;
-  service_type: string;
-  urgency: Urgency;
-  request_status: RequestStatus;
 }
 
 export interface Appointment {

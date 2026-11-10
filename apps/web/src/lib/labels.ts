@@ -2,7 +2,6 @@ import type {
   AppointmentStatus,
   AppointmentType,
   EstimateStatus,
-  OfferStatus,
   PaymentStatus,
   ProviderRole,
   ReferralStatus,
@@ -35,14 +34,6 @@ export const requestStatus: Record<RequestStatus, { label: string; tone: Tone; h
   in_progress: { label: 'In treatment', tone: 'teal', hint: 'Treatment is under way' },
   completed: { label: 'Completed', tone: 'green', hint: 'This care journey is complete' },
   cancelled: { label: 'Cancelled', tone: 'grey', hint: 'This request was cancelled' },
-};
-
-export const offerStatus: Record<OfferStatus, { label: string; tone: Tone }> = {
-  offered: { label: 'Awaiting patient', tone: 'gold' },
-  accepted: { label: 'Accepted', tone: 'green' },
-  declined: { label: 'Declined', tone: 'grey' },
-  expired: { label: 'Expired', tone: 'grey' },
-  withdrawn: { label: 'Withdrawn', tone: 'grey' },
 };
 
 export const appointmentStatus: Record<AppointmentStatus, { label: string; tone: Tone }> = {

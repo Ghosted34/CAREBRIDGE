@@ -19,8 +19,7 @@ import { RequestDetailPage } from './features/patient/RequestDetailPage';
 import { CapacityPage } from './features/provider/CapacityPage';
 import { JourneysPage } from './features/provider/JourneysPage';
 import { ProviderAppointmentsPage } from './features/provider/ProviderAppointmentsPage';
-import { ProviderOffersPage } from './features/provider/ProviderOffersPage';
-import { QueuePage } from './features/provider/QueuePage';
+import { ProviderRequestsPage } from './features/provider/ProviderRequestsPage';
 import { ReferralsPage } from './features/provider/ReferralsPage';
 import { TeamPage } from './features/provider/TeamPage';
 import { HomePage } from './features/public/HomePage';
@@ -64,16 +63,15 @@ export function App() {
         <Route path="patient/requests/:id" element={patient(<RequestDetailPage />)} />
         <Route path="patient/appointments" element={patient(<PatientAppointmentsPage />)} />
 
-        <Route path="provider" element={provider(<QueuePage />)} />
+        <Route path="provider" element={provider(<ProviderRequestsPage />)} />
         <Route path="provider/patients" element={provider(<JourneysPage />)} />
         <Route path="provider/appointments" element={provider(<ProviderAppointmentsPage />)} />
         <Route path="provider/capacity" element={provider(<CapacityPage />)} />
         <Route path="provider/referrals" element={provider(<ReferralsPage />)} />
-        <Route path="provider/offers" element={provider(<ProviderOffersPage />)} />
         <Route path="provider/team" element={provider(<TeamPage />)} />
 
         <Route path="ops" element={ops(<OverviewPage />)} />
-        <Route path="ops/queue" element={ops(<QueuePage />)} />
+        <Route path="ops/queue" element={ops(<ProviderRequestsPage />)} />
         <Route path="ops/journeys" element={ops(<JourneysPage />)} />
         <Route path="ops/sla" element={ops(<SlaDashboardPage />)} />
         <Route path="ops/audit-logs" element={ops(<AuditLogsPage />)} />

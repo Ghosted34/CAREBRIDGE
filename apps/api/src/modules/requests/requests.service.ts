@@ -6,7 +6,6 @@ import { AppError } from '../../lib/errors.js';
 import type { Ctx } from '../../lib/http.js';
 import { assertTransition } from '../../lib/stateMachine.js';
 import type { Pagination } from '../../lib/validate.js';
-import * as offersRepo from '../offers/offers.repo.js';
 import * as appointmentsRepo from '../appointments/appointments.repo.js';
 import * as appointmentsService from '../appointments/appointments.service.js';
 import { assertConsents } from '../consents/consents.service.js';
@@ -143,11 +142,9 @@ export async function cancel(c: Ctx, id: number) {
     const owns = request && c.user.role === 'patient' && request.patient_user_id === c.user.id;
     if (!request || !(owns || isPlatformStaff(c.user))) throw AppError.notFound('Care request');
     assertTransition('care_request', request.status, 'cancelled');
-    // Clinics that were involved (assigned, or waiting on an answer to their offer) get told.
-    const involved = new Set(await repo.openOfferProviderIds(tx, id));
+    const involved = new Set<number>();
     if (request.assigned_provider_id) involved.add(request.assigned_provider_id);
     await repo.setStatus(tx, id, 'cancelled');
-    const expired = await offersRepo.expireOpenForRequest(tx, id);
     const cancelledAppointments = await appointmentsRepo.cancelActiveForRequest(tx, id);
     await audit(tx, {
       actorUserId: c.user.id,
@@ -155,7 +152,7 @@ export async function cancel(c: Ctx, id: number) {
       entityType: 'care_request',
       entityId: id,
       ip: c.ip,
-      metadata: { expired_offers: expired, cancelled_appointments: cancelledAppointments },
+      metadata: { cancelled_appointments: cancelledAppointments },
     });
     for (const providerId of involved) {
       const staff = await notifications.providerStaffIds(tx, providerId);

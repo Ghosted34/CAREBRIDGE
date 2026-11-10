@@ -13,7 +13,7 @@ import { docsRouter } from './modules/docs/docs.routes.js';
 import { documentsRouter } from './modules/documents/documents.routes.js';
 import { estimatesRouter } from './modules/estimates/estimates.routes.js';
 import { notificationsRouter } from './modules/notifications/notifications.routes.js';
-import { offersRouter } from './modules/offers/offers.routes.js';
+
 import { paymentsRouter } from './modules/payments/payments.routes.js';
 import { providersRouter } from './modules/providers/providers.routes.js';
 import { referralsRouter } from './modules/referrals/referrals.routes.js';
@@ -49,7 +49,6 @@ export function createApp() {
     notificationsRouter,
     providersRouter,
     requestsRouter,
-    offersRouter,
     appointmentsRouter,
     slotsRouter,
     referralsRouter,

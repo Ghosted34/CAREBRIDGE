@@ -119,15 +119,6 @@ export async function setStatus(db: Db, id: number, status: string, assignedProv
   }
 }
 
-/** Provider IDs that have offered on this request (any status). */
-export async function offeringProviderIds(db: Db, requestId: number) {
-  const [rows] = await db.execute<Row[]>(
-    'SELECT provider_id FROM provider_offers WHERE care_request_id = ?',
-    [requestId],
-  );
-  return rows.map((r) => r.provider_id as number);
-}
-
 /** Requests assigned to the given providers (null = all), with patient contact for coordination. */
 export async function listAssigned(
   db: Db,
@@ -185,11 +176,3 @@ export async function matchingProviders(db: Db, requestId: number) {
   return rows.map((r) => ({ id: r.id as number, name: r.display_name as string }));
 }
 
-/** Providers with an unanswered offer on the request. */
-export async function openOfferProviderIds(db: Db, requestId: number) {
-  const [rows] = await db.execute<Row[]>(
-    `SELECT provider_id FROM provider_offers WHERE care_request_id = ? AND status = 'offered'`,
-    [requestId],
-  );
-  return rows.map((r) => r.provider_id as number);
-}
