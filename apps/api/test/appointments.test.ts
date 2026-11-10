@@ -94,22 +94,19 @@ describe('appointments', () => {
   });
 
   it('provider staff see their provider’s appointments and can confirm them', async () => {
-    const { patient, staff, providerId, requestId } = await acceptedRequest();
-    const { body } = await book(patient.auth, requestId, providerId);
+    const { patient, staff, apptId } = await acceptedRequest();
     const mine = await api.get('/api/v1/appointments/mine').set(staff.auth);
-    expect(mine.body.data.map((a: { id: number }) => a.id)).toEqual([body.data.id]);
+    expect(mine.body.data.map((a: { id: number }) => a.id)).toEqual([apptId]);
     expect(
-      (await api.post(`/api/v1/appointments/${body.data.id}/confirm`).set(patient.auth)).status,
+      (await api.post(`/api/v1/appointments/${apptId}/confirm`).set(patient.auth)).status,
     ).toBe(403);
-    const c = await api.post(`/api/v1/appointments/${body.data.id}/confirm`).set(staff.auth);
+    const c = await api.post(`/api/v1/appointments/${apptId}/confirm`).set(staff.auth);
     expect(c.body.data.status).toBe('confirmed');
   });
 
   it('scopes /appointments/mine to one clinic, and refuses a clinic the caller is not in', async () => {
     const mine = await acceptedRequest();
     const other = await acceptedRequest();
-    await book(mine.patient.auth, mine.requestId, mine.providerId);
-    await book(other.patient.auth, other.requestId, other.providerId);
 
     const scoped = await api
       .get(`/api/v1/appointments/mine?provider_id=${mine.providerId}`)
@@ -141,10 +138,9 @@ describe('appointments', () => {
   });
 
   it('cancelling the request expires offers and cancels active appointments', async () => {
-    const { patient, providerId, requestId } = await acceptedRequest();
-    await book(patient.auth, requestId, providerId);
+    const { patient, requestId } = await acceptedRequest();
     await api.post(`/api/v1/requests/${requestId}/cancel`).set(patient.auth);
     const [rows] = await pool.query<Row[]>('SELECT status FROM appointments');
-    expect(rows.map((r) => r.status)).toEqual(['cancelled']);
+    expect(rows.map((r) => r.status).sort()).toEqual(['cancelled']);
   });
 });

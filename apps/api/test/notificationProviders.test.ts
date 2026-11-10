@@ -176,7 +176,13 @@ describe('worker + Termii end to end (HTTP faked)', () => {
   afterAll(() => pool.end());
 
   it('sends the queued SMS through Termii and stores its message id', async () => {
-    await acceptedRequest();
+    const { patient } = await acceptedRequest();
+    // Queue an SMS notification for the patient (acceptedRequest only queues an email to staff)
+    await pool.execute(
+      `INSERT INTO notifications(user_id, channel, template_key, status, attempts, next_attempt_at, payload)
+       VALUES (?, 'sms', 'test_sms', 'queued', 0, NULL, '{}')`,
+      [patient.id],
+    );
     const fetchFn = fakeFetch(200, {
       code: 'ok',
       message_id: '42',

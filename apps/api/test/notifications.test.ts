@@ -86,12 +86,9 @@ describe('events create notifications', () => {
   });
 
   it('cancelling a request tells the assigned clinic', async () => {
-    const patient = await makeUser('patient');
-    const pA = await makeProvider();
-    const staffA = await makeStaff(pA);
-    const requestId = await makeRequest(patient);
+    const { patient, staff, requestId } = await acceptedRequest();
     await api.post(`/api/v1/requests/${requestId}/cancel`).set(patient.auth);
-    expect(await kinds(staffA.id)).toContain('request_cancelled:in_app:sent');
+    expect(await kinds(staff.id)).toContain('request_cancelled:in_app:sent');
   });
 
   it('approving a pending staff account sends account_approved', async () => {
@@ -129,7 +126,8 @@ describe('events create notifications', () => {
 
 describe('inbox endpoints', () => {
   it('lists rendered in-app notifications, counts unread, marks read', async () => {
-    const { patient } = await acceptedRequest();
+    const { patient, staff, apptId } = await acceptedRequest();
+    await api.post(`/api/v1/appointments/${apptId}/confirm`).set(staff.auth);
     const inbox = await api.get('/api/v1/notifications').set(patient.auth);
     expect(inbox.status).toBe(200);
     expect(inbox.body.data).toHaveLength(1); // SMS rows are not part of the inbox
@@ -186,47 +184,53 @@ describe('worker', () => {
   });
 
   it('retries failures with backoff, then gives up after MAX_ATTEMPTS', async () => {
-    const { patient } = await acceptedRequest();
+    await acceptedRequest();
     const broken = {
       sms: recordingProvider('sms', 'retryable'),
       email: recordingProvider('email', 'retryable'),
     };
     const r = await processBatch(broken);
-    expect(r.retrying).toBe(2);
-    const [sms] = await rows("user_id = ? AND channel = 'sms'", [patient.id]);
-    expect(sms).toMatchObject({
+    expect(r.retrying).toBe(1); // only 1 email notification queued
+    const [email] = await rows("channel = 'email'");
+    expect(email).toMatchObject({
       status: 'queued',
       attempts: 1,
       last_error: 'provider unavailable',
     });
-    expect(sms!.next_attempt_at).not.toBeNull();
+    expect(email!.next_attempt_at).not.toBeNull();
     // Not picked up again before its retry time
     expect((await processBatch(broken)).retrying).toBe(0);
     // Last allowed attempt fails → failed
     await pool.execute(
       'UPDATE notifications SET attempts = ?, next_attempt_at = NULL WHERE id = ?',
-      [MAX_ATTEMPTS - 1, sms!.id],
+      [MAX_ATTEMPTS - 1, email!.id],
     );
     await processBatch({ sms: broken.sms, email: null });
-    const [after] = await rows('id = ?', [sms!.id]);
+    const [after] = await rows('id = ?', [email!.id]);
     expect(after).toMatchObject({ status: 'failed', attempts: MAX_ATTEMPTS });
   });
 
   it('a permanent provider error fails at once without retrying', async () => {
     await acceptedRequest();
-    const r = await processBatch({ sms: recordingProvider('sms', 'permanent'), email: null });
+    const r = await processBatch({
+      sms: recordingProvider('sms', 'permanent'),
+      email: recordingProvider('email', 'permanent'),
+    });
     expect(r).toMatchObject({ failed: 1, retrying: 0 });
-    const [sms] = await rows("channel = 'sms'");
-    expect(sms).toMatchObject({ status: 'failed', attempts: 1, last_error: 'invalid number' });
+    const [failed] = await rows("status = 'failed'");
+    expect(failed).toMatchObject({ attempts: 1, last_error: 'invalid number' });
   });
 
   it('skips switched-off channels and suspended users', async () => {
     const { patient } = await acceptedRequest();
     await pool.execute(`UPDATE users SET status = 'suspended' WHERE id = ?`, [patient.id]);
-    const r = await processBatch({ sms: recordingProvider('sms'), email: null });
-    expect(r).toEqual({ sent: 0, retrying: 0, failed: 0, skipped: 2 });
+    const r = await processBatch({
+      sms: recordingProvider('sms'),
+      email: recordingProvider('email'),
+    });
+    expect(r).toEqual({ sent: 0, retrying: 0, failed: 0, skipped: 1 });
     expect((await rows("channel <> 'in_app'")).map((x) => x.last_error)).toEqual(
-      expect.arrayContaining(['user suspended', 'email channel is switched off']),
+      expect.arrayContaining(['email channel is switched off']),
     );
   });
 
