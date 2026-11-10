@@ -180,8 +180,11 @@ describe('worker + Termii end to end (HTTP faked)', () => {
     // Queue an SMS notification for the patient (acceptedRequest only queues an email to staff)
     await pool.execute(
       `INSERT INTO notifications(user_id, channel, template_key, status, attempts, next_attempt_at, payload)
-       VALUES (?, 'sms', 'test_sms', 'queued', 0, NULL, '{}')`,
-      [patient.id],
+       VALUES (?, 'sms', 'appointment_confirmed', 'queued', 0, NULL, ?)`,
+      [
+        patient.id,
+        JSON.stringify({ provider: 'Test Clinic', starts_at: '2026-11-10T09:00:00+01:00' }),
+      ],
     );
     const fetchFn = fakeFetch(200, {
       code: 'ok',

@@ -205,7 +205,7 @@ describe('worker', () => {
       'UPDATE notifications SET attempts = ?, next_attempt_at = NULL WHERE id = ?',
       [MAX_ATTEMPTS - 1, email!.id],
     );
-    await processBatch({ sms: broken.sms, email: null });
+    await processBatch({ sms: null, email: broken.email });
     const [after] = await rows('id = ?', [email!.id]);
     expect(after).toMatchObject({ status: 'failed', attempts: MAX_ATTEMPTS });
   });
@@ -222,15 +222,15 @@ describe('worker', () => {
   });
 
   it('skips switched-off channels and suspended users', async () => {
-    const { patient } = await acceptedRequest();
-    await pool.execute(`UPDATE users SET status = 'suspended' WHERE id = ?`, [patient.id]);
+    const { staff } = await acceptedRequest();
+    await pool.execute(`UPDATE users SET status = 'suspended' WHERE id = ?`, [staff.id]);
     const r = await processBatch({
       sms: recordingProvider('sms'),
       email: recordingProvider('email'),
     });
     expect(r).toEqual({ sent: 0, retrying: 0, failed: 0, skipped: 1 });
     expect((await rows("channel <> 'in_app'")).map((x) => x.last_error)).toEqual(
-      expect.arrayContaining(['email channel is switched off']),
+      expect.arrayContaining(['user suspended']),
     );
   });
 
