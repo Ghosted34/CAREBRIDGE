@@ -212,7 +212,8 @@ const CLINICS: {
   },
   {
     // Added 11 Nov 2026 to re-check self-registration after the approval fix: signed up at /register,
-    // verified by the admin (which activated the owner), then the owner added the centre and hours.
+    // verified by the admin (which activated the owner), then the owner added the centre and hours,
+    // and later added its phone with "Edit centre".
     // No dentists or fee yet — that's how it was left.
     legal_name: 'Yaba Dental Ltd',
     display_name: 'Yaba Dental',
@@ -236,7 +237,7 @@ const CLINICS: {
         city: 'Yaba',
         state: 'Lagos',
         postal_code: '101245',
-        phone: null,
+        phone: '+2348000000051', // added later with "Edit centre"
         hours: WEEKDAYS('09:00', '17:00'),
         caregivers: [],
       },

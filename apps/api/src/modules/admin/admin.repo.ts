@@ -106,7 +106,7 @@ export async function removeMember(db: Db, providerId: number, userId: number) {
 export async function listProviders(db: Db, f: { verification_status?: string } & Pagination) {
   const where = f.verification_status ? 'WHERE p.verification_status = ?' : '';
   const [rows] = await db.query<Row[]>(
-    `SELECT p.id, p.legal_name, p.display_name, p.provider_type, p.registration_number,
+    `SELECT p.id, p.legal_name, p.display_name, p.provider_type, p.registration_number, p.cac_number, p.tax_id,
             p.verification_status, p.status, p.city, p.address, p.specialties, p.accepting_referrals,
             p.created_at, (SELECT COUNT(*) FROM provider_users pu WHERE pu.provider_id = p.id) AS member_count
        FROM providers p ${where}

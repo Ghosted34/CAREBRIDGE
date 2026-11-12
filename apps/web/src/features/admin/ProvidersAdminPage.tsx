@@ -101,6 +101,9 @@ export function ProvidersAdminPage() {
                     <td>
                       {p.registration_number}
                       <div className="muted small">{p.legal_name}</div>
+                      <div className="muted small">
+                        CAC {p.cac_number || '—'} · TIN {p.tax_id || '—'}
+                      </div>
                     </td>
                     <td>
                       <div className="tag-list">

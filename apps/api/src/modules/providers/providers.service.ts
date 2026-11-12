@@ -31,10 +31,10 @@ async function roleAt(db: Db, user: AuthUser, providerId: number) {
   return membership.provider_role as string;
 }
 
-/** Only the clinic owner (or platform staff) manages the roster. */
+/** Only the clinic owner (or platform staff) manages the team, centres, dentists and fees. */
 async function assertOwner(db: Db, user: AuthUser, providerId: number) {
   if ((await roleAt(db, user, providerId)) !== 'owner') {
-    throw AppError.forbidden('Only the clinic owner can manage the team');
+    throw AppError.forbidden('Only the clinic owner can do this');
   }
 }
 
