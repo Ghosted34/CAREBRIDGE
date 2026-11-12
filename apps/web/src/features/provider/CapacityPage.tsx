@@ -56,6 +56,7 @@ export function CapacityPage() {
     user?.memberships.find((m) => m.provider_id === clinicId)?.provider_role === 'owner';
   const [selected, setSelected] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   const centres = useQuery({
     queryKey: ['centres', clinicId],
@@ -102,7 +103,10 @@ export function CapacityPage() {
           </div>
           {centre && (
             <div className="stack gap-4">
-              <CentreSummary centre={centre} />
+              <CentreSummary
+                centre={centre}
+                onEdit={isOwner ? () => setEditing(true) : undefined}
+              />
               <HoursEditor
                 key={centre.id}
                 providerId={clinicId}
@@ -114,17 +118,22 @@ export function CapacityPage() {
           )}
         </>
       )}
-      <AddCentre
-        providerId={clinicId}
-        open={adding}
-        onClose={() => setAdding(false)}
-        onAdded={setSelected}
-      />
+      {adding && (
+        <CentreForm providerId={clinicId} onClose={() => setAdding(false)} onSaved={setSelected} />
+      )}
+      {editing && centre && (
+        <CentreForm
+          providerId={clinicId}
+          centre={centre}
+          onClose={() => setEditing(false)}
+          onSaved={setSelected}
+        />
+      )}
     </>
   );
 }
 
-function CentreSummary({ centre }: { centre: Centre }) {
+function CentreSummary({ centre, onEdit }: { centre: Centre; onEdit?: () => void }) {
   return (
     <Card>
       <div className="card-head">
@@ -135,9 +144,16 @@ function CentreSummary({ centre }: { centre: Centre }) {
             {centre.phone && ` · ${centre.phone}`}
           </div>
         </div>
-        <Pill tone={centre.is_active ? 'green' : 'grey'}>
-          {centre.is_active ? 'Taking bookings' : 'Inactive'}
-        </Pill>
+        <div className="cluster gap-2">
+          <Pill tone={centre.is_active ? 'green' : 'grey'}>
+            {centre.is_active ? 'Taking bookings' : 'Not taking bookings'}
+          </Pill>
+          {onEdit && (
+            <Button variant="secondary" className="btn-sm" onClick={onEdit}>
+              Edit centre
+            </Button>
+          )}
+        </div>
       </div>
       <p className="hint">
         Patients searching in <strong>{centre.city}</strong> see this centre first, then others in{' '}
@@ -366,75 +382,99 @@ function Dentists({
   );
 }
 
-function AddCentre({
+/** Add a centre, or edit one (`centre` given). Mounted only while open, so it starts from fresh values. */
+function CentreForm({
   providerId,
-  open,
+  centre,
   onClose,
-  onAdded,
+  onSaved,
 }: {
   providerId: number;
-  open: boolean;
+  centre?: Centre;
   onClose: () => void;
-  onAdded: (id: number) => void;
+  onSaved: (id: number) => void;
 }) {
   const queryClient = useQueryClient();
-  const empty = {
-    name: '',
-    address_line: '',
-    city: '',
-    state: 'Lagos',
-    postal_code: '',
-    phone: '',
-  };
-  const [f, setF] = useState(empty);
-  const set = (k: keyof typeof empty) => (e: { target: { value: string } }) =>
+  const [f, setF] = useState({
+    name: centre?.name ?? '',
+    address_line: centre?.address_line ?? '',
+    city: centre?.city ?? '',
+    state: centre?.state ?? 'Lagos',
+    postal_code: centre?.postal_code ?? '',
+    phone: centre?.phone ?? '',
+  });
+  const [active, setActive] = useState(centre ? Boolean(centre.is_active) : true);
+  const set = (k: keyof typeof f) => (e: { target: { value: string } }) =>
     setF((x) => ({ ...x, [k]: e.target.value }));
-  const create = useMutation({
-    mutationFn: () => api.createCentre(providerId, { ...f, phone: f.phone || undefined }),
+  const save = useMutation({
+    mutationFn: () =>
+      centre
+        ? api.updateCentre(providerId, centre.id, {
+            ...f,
+            phone: f.phone.trim() || null,
+            is_active: active,
+          })
+        : api.createCentre(providerId, { ...f, phone: f.phone.trim() || undefined }),
     onSuccess: (r) => {
       void queryClient.invalidateQueries({ queryKey: ['centres', providerId] });
-      setF(empty);
-      onAdded(r.data.id);
+      onSaved(r.data.id);
       onClose();
     },
   });
   return (
-    <Modal open={open} title="Add a centre" onClose={onClose}>
+    <Modal open title={centre ? `Edit ${centre.name}` : 'Add a centre'} onClose={onClose}>
       <form
         className="form"
+        aria-label={centre ? 'Edit centre' : 'Add a centre'}
         onSubmit={(e) => {
           e.preventDefault();
-          create.mutate();
+          save.mutate();
         }}
       >
         <div className="form-grid">
           <Field label="Centre name" hint="e.g. Lekki Phase 1">
-            <input required value={f.name} onChange={set('name')} />
+            <input required minLength={2} value={f.name} onChange={set('name')} />
           </Field>
           <Field label="Street address">
-            <input required value={f.address_line} onChange={set('address_line')} />
+            <input required minLength={2} value={f.address_line} onChange={set('address_line')} />
           </Field>
-          <Field label="Area / city" hint="Patients are matched by this, e.g. Ikeja">
-            <input required value={f.city} onChange={set('city')} />
+          <Field
+            label="Area / city"
+            hint="The area patients search by, e.g. Ikeja or Lekki — not just “Lagos”"
+          >
+            <input required minLength={2} value={f.city} onChange={set('city')} />
           </Field>
           <Field label="State">
-            <input required value={f.state} onChange={set('state')} />
+            <input required minLength={2} value={f.state} onChange={set('state')} />
           </Field>
           <Field label="Postal code">
-            <input required value={f.postal_code} onChange={set('postal_code')} />
+            <input required minLength={2} value={f.postal_code} onChange={set('postal_code')} />
           </Field>
           <Field label="Phone (optional)">
             <input type="tel" value={f.phone} onChange={set('phone')} />
           </Field>
         </div>
-        <p className="hint">Next, set its opening hours so patients can book.</p>
-        <ErrorNote error={create.error} />
+        {centre ? (
+          <label className="check">
+            <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
+            <span>
+              Taking bookings
+              <span className="hint">
+                {' '}
+                — untick to hide this centre from search. Existing bookings are kept.
+              </span>
+            </span>
+          </label>
+        ) : (
+          <p className="hint">Next, set its opening hours so patients can book.</p>
+        )}
+        <ErrorNote error={save.error} />
         <div className="btn-row">
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" busy={create.isPending}>
-            Add centre
+          <Button type="submit" busy={save.isPending}>
+            {centre ? 'Save changes' : 'Add centre'}
           </Button>
         </div>
       </form>

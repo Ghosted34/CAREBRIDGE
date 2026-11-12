@@ -36,11 +36,14 @@ the owner pending. After that the owner adds centres and opening hours, then man
 
 ## Patient & Provider KYC
 
+Patient KYC (address, DOB, gender, ID number, emergency contact) is collected at registration (`kyc` in
+`POST /auth/register`). Its `address_city`/`address_state` decide which centres `/search` shows first; a patient
+can search near another area with `city`/`state` on `/search`. There is no endpoint yet to change it afterwards.
+Provider KYC (`cac_number`, `tax_id`) is collected at clinic sign-up and shown to admins in the provider list.
+
+
 | Method & path | Who | Body | Notes |
 |---|---|---|---|
-| `GET /patient/kyc` | patient | — | patient's structured address, DOB, gender, ID number, emergency contact |
-| `POST /patient/kyc` | patient | `address_street, address_city, address_state, address_postal, date_of_birth, gender, id_number, emergency_contact_name, emergency_contact_phone` | set or update patient KYC. `address_city`/`address_state` decide which centres `/search` shows first. |
-| `GET /admin/providers/:id/kyc` | admin, operator | — | provider's KYC: CAC number, tax ID |
 | `POST /admin/providers/:id/verification` | admin | `verification_status: verified \\| rejected \\| suspended` | manual KYC verification of a facility. `verified` also activates its pending owners; returns `activated_owners: [userId]` |
 
 ## Provider team (self-managed)
@@ -179,7 +182,7 @@ referrals and prescriptions are now appointment notes; estimates and payments co
 | `GET /admin/audit-logs` | admin, operator | `action?, entity_type?, entity_id?, actor_user_id?, limit?, offset?` | append-only audit trail viewer |
 | `GET /admin/users` | admin | `status?`, `role?`, paging | |
 | `POST /admin/users/:id/status` | admin | `status: active \| suspended` | can't change your own |
-| `GET /admin/providers` | admin, operator | `verification_status?`, paging | all providers, pending first, with `member_count` |
+| `GET /admin/providers` | admin, operator | `verification_status?`, paging | all providers, pending first, with `member_count` and the KYC to check (`cac_number`, `tax_id`) |
 | `POST /admin/providers` | admin | `legal_name, display_name, provider_type, registration_number, city?, address, specialties[], services?[], latitude?, longitude?` | starts `pending` |
 | `POST /admin/providers/:id/verification` | admin | `verification_status: verified \| rejected \| suspended` | `verified` also activates the facility's pending owners (see Auth) |
 | `GET /admin/providers/:id/members` | admin | — | |

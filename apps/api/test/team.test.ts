@@ -81,6 +81,12 @@ describe('clinic self-onboarding', () => {
     expect(early.status).toBe(403);
 
     const admin = await makeUser('admin');
+    // The admin sees the KYC to check before verifying.
+    const list = await api.get('/api/v1/admin/providers').set(admin.auth);
+    expect(list.body.data.find((p: { id: number }) => p.id === providerId)).toMatchObject({
+      cac_number: reg.clinic.cac_number,
+      tax_id: reg.clinic.tax_id,
+    });
     const v = await api
       .post(`/api/v1/admin/providers/${providerId}/verification`)
       .set(admin.auth)

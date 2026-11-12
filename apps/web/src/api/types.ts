@@ -142,6 +142,9 @@ export interface AdminProvider {
   display_name: string;
   provider_type: Provider['provider_type'];
   registration_number: string;
+  /** KYC the admin checks before verifying; empty for clinics added before KYC was collected. */
+  cac_number: string | null;
+  tax_id: string | null;
   verification_status: VerificationStatus;
   status: 'active' | 'inactive';
   city: string;

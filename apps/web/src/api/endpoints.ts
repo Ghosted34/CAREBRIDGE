@@ -203,7 +203,7 @@ export const api = {
       phone: string | null;
       is_active: boolean;
     }>,
-  ) => post<Envelope<Centre>>(`/providers/${providerId}/centres/${centreId}`, body),
+  ) => put<Envelope<Centre>>(`/providers/${providerId}/centres/${centreId}`, body),
 
   // caregivers (owner-managed)
   caregivers: (providerId: number, careRequestId?: number) =>
@@ -247,8 +247,6 @@ export const api = {
     request<Envelope<{ removed: boolean }>>('DELETE', `/providers/${providerId}/fees/${feeId}`),
 
   // patient KYC
-  patientKYC: () => get<Envelope<PatientKYC>>('/patient/kyc'),
-  updatePatientKYC: (body: PatientKYC) => post<Envelope<PatientKYC>>('/patient/kyc', body),
 
   // referrals
   createReferral: (
