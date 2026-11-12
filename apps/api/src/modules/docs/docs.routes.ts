@@ -8,7 +8,7 @@ export const openapiSpec = {
     title: 'CareLynk API',
     version: '0.2.0',
     description:
-      'Coordinated access to verified healthcare capacity in Lagos (dental pilot). Manages patient requests, clinic offers, real capacity slots, clinical referrals, cost estimates, clinical documents, payments, and care journeys.',
+      'Find a verified dental clinic near you with free time when you are free, send a booking request, and keep the visit record (check-in and post-visit notes). Lagos pilot.',
   },
   servers: [{ url: '/api/v1', description: 'API v1' }],
   components: {
@@ -113,39 +113,70 @@ export const openapiSpec = {
         responses: { '200': { description: 'JWT token returned' } },
       },
     },
-    '/requests': {
+    '/problems': {
+      get: {
+        summary: 'Problems a patient can choose from (public)',
+        responses: { '200': { description: 'List of { key, label }' } },
+      },
+    },
+    '/search': {
       post: {
         summary:
-          'Submit a new care request with triage; optional `target_provider_id` sends it straight to a clinic the patient chose',
+          'Find clinics for a problem near the patient with free times in their date periods',
+        description:
+          'Body: { problem, periods: [{ from_date, to_date, time_of_day: any|morning|afternoon|evening }] (1–5, ≤31 days, ≤60 days ahead), city?, state? }. Ranked by area (same city/area, same state, elsewhere) then earliest free time. Centres with no free time are omitted.',
         security: [{ bearerAuth: [] }],
         responses: {
-          '201': { description: 'Request created (`provider_accepted` when directed at a clinic)' },
-          '404': {
-            description: 'The chosen clinic cannot take this request; nothing stored',
-            content: {
-              'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
-            },
+          '200': {
+            description: '{ near, problem, results: [centre with free_times, fee, caregivers] }',
           },
-          '422': { description: 'Emergency redirect' },
         },
       },
     },
-    '/requests/{id}/matches': {
+    '/centres/{centreId}/availability': {
       get: {
-        summary: 'Get intelligent matching score breakdown for verified providers',
+        summary: 'Free times at one centre (from_date, to_date, time_of_day)',
         security: [{ bearerAuth: [] }],
-        responses: { '200': { description: 'Ranked providers with score breakdown' } },
+        responses: { '200': { description: '{ centre_id, free_times }' } },
       },
     },
-    '/providers/{id}/slots': {
+    '/appointments': {
+      post: {
+        summary: 'Send a booking request for a free time at a centre',
+        description:
+          'New visit: { centre_id, starts_at, problem, has_emergency_symptoms, details?, appointment_mode?, caregiver_id? }. Follow-up: { centre_id, starts_at, care_request_id }. The time must be free (opening hours, slot grid, one appointment per centre at a time); the end time is set by the server. Creates a `requested` appointment.',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '201': { description: 'Requested appointment' },
+          '409': { description: 'SLOT_UNAVAILABLE, NOT_A_MATCH, CONSENT_REQUIRED, …' },
+          '422': { description: 'EMERGENCY_REDIRECT' },
+        },
+      },
+    },
+    '/appointments/{id}/{action}': {
+      post: {
+        summary:
+          'Clinic action: confirm | decline | check-in | complete | no-show (patients: cancel)',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'New status' },
+          '409': { description: 'INVALID_TRANSITION' },
+        },
+      },
+    },
+    '/appointments/{id}/notes': {
       get: {
-        summary: 'List bookable appointment slots for a provider',
-        responses: { '200': { description: 'List of slots' } },
+        summary: 'Visit notes — the patient and the clinic only',
+        security: [{ bearerAuth: [] }],
+        responses: { '200': { description: 'Notes' }, '404': { description: 'Not yours' } },
       },
       post: {
-        summary: 'Create a bookable slot',
+        summary: 'Add a post-visit note after check-in (prescription/referral: dentists & owners)',
         security: [{ bearerAuth: [] }],
-        responses: { '201': { description: 'Slot created' } },
+        responses: {
+          '200': { description: 'Created' },
+          '409': { description: 'VISIT_NOT_STARTED' },
+        },
       },
     },
     '/requests/{id}/referrals': {

@@ -3,8 +3,10 @@ import type { Pagination } from '../../lib/validate.js';
 
 const FIELDS = `a.id, a.care_request_id, a.patient_user_id, u.full_name AS patient_name, a.provider_id,
   p.display_name AS provider, a.appointment_type, a.appointment_mode, a.centre_id,
+  pc.name AS centre_name, pc.address_line AS centre_address, a.caregiver_id, cg.full_name AS caregiver_name,
   a.starts_at, a.ends_at, a.status, a.created_at`;
-const FROM = `appointments a JOIN providers p ON p.id = a.provider_id JOIN users u ON u.id = a.patient_user_id`;
+const FROM = `appointments a JOIN providers p ON p.id = a.provider_id JOIN users u ON u.id = a.patient_user_id
+  LEFT JOIN provider_centres pc ON pc.id = a.centre_id LEFT JOIN provider_caregivers cg ON cg.id = a.caregiver_id`;
 
 export async function insert(
   db: Db,
@@ -13,6 +15,7 @@ export async function insert(
     patient_user_id: number;
     provider_id: number;
     centre_id: number | null;
+    caregiver_id: number | null;
     appointment_type: string;
     appointment_mode: string;
     starts_at: Date;
@@ -22,14 +25,15 @@ export async function insert(
   },
 ) {
   const [r] = await db.execute<Result>(
-    `INSERT INTO appointments(care_request_id, patient_user_id, provider_id, centre_id, appointment_type,
-       appointment_mode, starts_at, ends_at, status, created_by_user_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO appointments(care_request_id, patient_user_id, provider_id, centre_id, caregiver_id,
+       appointment_type, appointment_mode, starts_at, ends_at, status, created_by_user_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       a.care_request_id,
       a.patient_user_id,
       a.provider_id,
       a.centre_id,
+      a.caregiver_id,
       a.appointment_type,
       a.appointment_mode,
       a.starts_at,
@@ -44,25 +48,6 @@ export async function insert(
 /**
  * Update the provider on a requested appointment (patient picks a different provider
  * before the clinic confirms). Only allowed while status is `requested`.
- */
-export async function updateRequestProvider(
-  db: Db,
-  id: number,
-  providerId: number,
-  centreId: number | null,
-): Promise<number> {
-  const [r] = await db.execute<Result>(
-    `UPDATE appointments SET provider_id = ?, centre_id = ?
-      WHERE id = ? AND status = 'requested'`,
-    [providerId, centreId, id],
-  );
-  return r.affectedRows;
-}
-
-/**
- * Appointments for a care request where the patient was actually seen (`checked_in`/`completed`).
- * Clinical governance: estimates, referrals and treatment planning need one of these first
- * (see `assertVisitHappened`).
  */
 export async function countSeenForRequest(db: Db, careRequestId: number) {
   const [rows] = await db.execute<Row[]>(
@@ -134,4 +119,32 @@ export async function cancelActiveForRequest(db: Db, requestId: number) {
     [requestId],
   );
   return r.affectedRows;
+}
+
+/** Is the caregiver an active member of that centre? */
+export async function caregiverAtCentre(db: Db, caregiverId: number, centreId: number) {
+  const [rows] = await db.execute<Row[]>(
+    'SELECT id FROM provider_caregivers WHERE id = ? AND centre_id = ? AND is_active = TRUE',
+    [caregiverId, centreId],
+  );
+  return rows.length > 0;
+}
+
+/** Bookings on a care request that are still to happen or happening. */
+export async function countActiveForRequest(db: Db, careRequestId: number) {
+  const [rows] = await db.execute<Row[]>(
+    `SELECT COUNT(*) AS n FROM appointments
+      WHERE care_request_id = ? AND status IN ('requested','booked','confirmed','checked_in')`,
+    [careRequestId],
+  );
+  return Number(rows[0]!.n);
+}
+
+/** A patient's booking requests the clinic hasn't confirmed yet (locked). */
+export async function requestedForPatient(db: Db, patientId: number) {
+  const [rows] = await db.execute<Row[]>(
+    `SELECT id, care_request_id FROM appointments WHERE patient_user_id = ? AND status = 'requested' FOR UPDATE`,
+    [patientId],
+  );
+  return rows as { id: number; care_request_id: number }[];
 }

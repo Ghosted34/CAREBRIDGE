@@ -16,7 +16,7 @@ export function PatientAppointmentsPage() {
         <ErrorNote error={q.error} />
       ) : q.data.data.length === 0 ? (
         <EmptyState title="No appointments yet">
-          Once a provider is confirmed you can book from the request page.
+          <Link to="/patient/new">Book a visit</Link> to see clinics with open times.
         </EmptyState>
       ) : (
         <Card>
@@ -27,8 +27,15 @@ export function PatientAppointmentsPage() {
                   <div className="list-item-main">
                     <div className="list-item-title">
                       {appointmentType[a.appointment_type]} · {a.provider}
+                      {a.centre_name && `, ${a.centre_name}`}
                     </div>
-                    <div className="meta">{formatTimeRange(a.starts_at, a.ends_at)}</div>
+                    <div className="meta">
+                      <span>{formatTimeRange(a.starts_at, a.ends_at)}</span>
+                      <span>
+                        {a.appointment_mode === 'remote' ? 'Video / voice call' : 'In person'}
+                      </span>
+                      {a.caregiver_name && <span>with {a.caregiver_name}</span>}
+                    </div>
                   </div>
                   <Pill tone={appointmentStatus[a.status].tone}>
                     {appointmentStatus[a.status].label}

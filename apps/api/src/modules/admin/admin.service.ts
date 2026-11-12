@@ -88,7 +88,25 @@ export async function setVerification(
       ip: c.ip,
       metadata: { from: provider.verification_status, to: status },
     });
-    return { id: providerId, verification_status: status };
+    // A clinic that signed itself up has one approval step: verifying the facility also activates
+    // its owner's pending account (they could not sign in otherwise). Suspended accounts stay as they are.
+    const activated: number[] = [];
+    if (status === 'verified') {
+      for (const userId of await repo.pendingOwnerIds(tx, providerId)) {
+        await repo.setUserStatus(tx, userId, 'active');
+        await audit(tx, {
+          actorUserId: c.user.id,
+          action: 'USER_ACTIVATED',
+          entityType: 'user',
+          entityId: userId,
+          ip: c.ip,
+          metadata: { from: 'pending', via: 'provider_verification', provider_id: providerId },
+        });
+        await notifications.notify(tx, [userId], 'account_approved', {});
+        activated.push(userId);
+      }
+    }
+    return { id: providerId, verification_status: status, activated_owners: activated };
   });
 }
 

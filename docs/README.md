@@ -23,3 +23,4 @@ Start here. Everything about how CareBridge is built, run and changed lives in t
 - [0002 — Web app stack and structure](decisions/0002-web-app.md)
 - [0003 — Migration strategy](decisions/0003-migrations.md)
 - [0004 — Notifications](decisions/0004-notifications.md)
+- [0005 — MVP realignment: search free times, book, notes](decisions/0005-mvp-realignment.md)

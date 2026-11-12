@@ -70,33 +70,31 @@ describe('clinic self-onboarding', () => {
     expect((await api.get(`/api/v1/providers/${providerId}`)).status).toBe(404);
   });
 
-  it('stays locked until an admin verifies the facility and activates the owner', async () => {
+  it('verifying the facility also activates its pending owner, who can then sign in (regression)', async () => {
     const reg = clinicRegistration();
     const providerId = (await api.post('/api/v1/auth/register').send(reg)).body.data
       .provider_id as number;
-    // A pending account cannot sign in, verified facility or not.
+    // A pending account cannot sign in.
     const early = await api
       .post('/api/v1/auth/login')
       .send({ email: reg.email, password: PASSWORD });
     expect(early.status).toBe(403);
 
     const admin = await makeUser('admin');
-    expect(
-      (
-        await api.post(`/api/v1/admin/providers/${providerId}/verification`).set(admin.auth).send({
-          verification_status: 'verified',
-        })
-      ).status,
-    ).toBe(200);
-    const [owner] = await rows('SELECT id FROM users WHERE email = ?', [reg.email]);
-    expect(
-      (
-        await api
-          .post(`/api/v1/admin/users/${owner!.id}/status`)
-          .set(admin.auth)
-          .send({ status: 'active' })
-      ).status,
-    ).toBe(200);
+    const v = await api
+      .post(`/api/v1/admin/providers/${providerId}/verification`)
+      .set(admin.auth)
+      .send({ verification_status: 'verified' });
+    expect(v.status).toBe(200);
+    const [owner] = await rows('SELECT id, status FROM users WHERE email = ?', [reg.email]);
+    expect(owner!.status).toBe('active');
+    expect(v.body.data.activated_owners).toEqual([owner!.id]);
+    expect(await auditActions('user', owner!.id as number)).toContain('USER_ACTIVATED');
+    const [n] = await rows(
+      "SELECT COUNT(*) AS c FROM notifications WHERE user_id = ? AND template_key = 'account_approved'",
+      [owner!.id],
+    );
+    expect(Number(n!.c)).toBeGreaterThan(0);
 
     const login = await api
       .post('/api/v1/auth/login')
@@ -108,6 +106,30 @@ describe('clinic self-onboarding', () => {
     expect(me.body.data.memberships).toEqual([
       expect.objectContaining({ provider_id: providerId, provider_role: 'owner' }),
     ]);
+  });
+
+  it('rejecting a facility leaves the owner pending; verifying never re-activates a suspended owner', async () => {
+    const admin = await makeUser('admin');
+    const a = clinicRegistration();
+    const pa = (await api.post('/api/v1/auth/register').send(a)).body.data.provider_id as number;
+    await api
+      .post(`/api/v1/admin/providers/${pa}/verification`)
+      .set(admin.auth)
+      .send({ verification_status: 'rejected' });
+    expect((await rows('SELECT status FROM users WHERE email = ?', [a.email]))[0]!.status).toBe(
+      'pending',
+    );
+
+    const b = clinicRegistration();
+    const pb = (await api.post('/api/v1/auth/register').send(b)).body.data.provider_id as number;
+    await pool.execute("UPDATE users SET status = 'suspended' WHERE email = ?", [b.email]);
+    await api
+      .post(`/api/v1/admin/providers/${pb}/verification`)
+      .set(admin.auth)
+      .send({ verification_status: 'verified' });
+    expect((await rows('SELECT status FROM users WHERE email = ?', [b.email]))[0]!.status).toBe(
+      'suspended',
+    );
   });
 
   it('refuses facility details from a patient account and duplicate registration numbers', async () => {

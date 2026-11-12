@@ -20,6 +20,8 @@
     "migrate:verify": "tsx src/db/migrate.ts verify",
     "migrate:prod": "node dist/db/migrate.js up",
     "seed": "tsx src/db/seed.ts",
+    "admin:create": "tsx src/db/createAdmin.ts",
+    "admin:create:prod": "node dist/db/createAdmin.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "format": "prettier --write .",

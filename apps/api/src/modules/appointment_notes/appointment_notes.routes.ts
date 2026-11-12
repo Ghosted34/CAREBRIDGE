@@ -13,13 +13,13 @@ export const appointmentNotesRouter = Router();
 appointmentNotesRouter.get('/appointments/:id/notes', authenticate, async (req, res) => {
   const { id } = parse(IdParam, req.params);
   const q = parse(ListAppointmentNotesQuery, req.query);
-  list(res, await service.listNotes(id, q), q);
+  list(res, await service.listNotes(ctx(req), id, q), q);
 });
 
 appointmentNotesRouter.post(
   '/appointments/:id/notes',
   authenticate,
-  allow('provider_staff', 'operator', 'admin'),
+  allow('provider_staff'),
   async (req, res) => {
     const { id } = parse(IdParam, req.params);
     ok(res, await service.createNote(ctx(req), id, parse(CreateAppointmentNoteBody, req.body)));

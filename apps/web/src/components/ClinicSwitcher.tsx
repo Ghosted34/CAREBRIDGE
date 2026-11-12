@@ -3,7 +3,7 @@ import { Field } from './ui';
 
 /**
  * Topbar switcher for staff who belong to more than one accredited clinic: the queue,
- * appointments, offers and capacity all follow the clinic selected here.
+ * bookings, centres and hours all follow the clinic selected here.
  */
 export function ClinicSwitcher() {
   const { clinicId, clinics, canSwitch, setClinicId } = useActiveClinic();

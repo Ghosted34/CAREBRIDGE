@@ -45,7 +45,7 @@ async function assertVerifiedClinic(db: Db, providerId: number) {
   if (provider.verification_status !== 'verified' || provider.status !== 'active') {
     throw AppError.conflict(
       'PROVIDER_NOT_VERIFIED',
-      'Your facility is still awaiting CareBridge verification, so team management is locked',
+      'Your facility is still awaiting CareLynk verification, so team management is locked',
     );
   }
   return provider;
@@ -138,7 +138,7 @@ export async function removeTeamMember(c: Ctx, providerId: number, userId: numbe
     if (member.provider_role === 'owner') {
       throw AppError.conflict(
         'OWNER_CHANGE_FORBIDDEN',
-        'Clinic ownership is changed by CareBridge, not by the clinic',
+        'Clinic ownership is changed by CareLynk, not by the clinic',
       );
     }
     await repo.removeMember(tx, providerId, userId);

@@ -1,97 +1,77 @@
 import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router';
 import { api } from '../../api/endpoints';
-import { Card, EmptyState, Pill } from '../../components/ui';
-import { slaCategory, urgency } from '../../lib/labels';
+import { Card, EmptyState, ErrorNote, PageHeader, Pill, Spinner } from '../../components/ui';
+import { appointmentStatus, slaCategory } from '../../lib/labels';
 import { formatDateTime } from '../../lib/time';
 
+const age = (minutes: number) => {
+  const d = Math.floor(minutes / 1440);
+  const h = Math.floor((minutes % 1440) / 60);
+  return d > 0 ? `${d}d ${h}h` : h > 0 ? `${h}h ${minutes % 60}m` : `${minutes}m`;
+};
+
+/** Bookings that need a nudge: unconfirmed requests, visits with no check-in, visits with no outcome. */
 export function SlaDashboardPage() {
-  const { data, isLoading } = useQuery({
+  const q = useQuery({
     queryKey: ['stuck-requests'],
     queryFn: () => api.stuckRequests(),
     refetchInterval: 30_000,
   });
-
-  const stuck = data?.data ?? [];
-  const breachedCount = stuck.filter(
-    (s) => s.sla_category === 'unmatched_breach' || s.sla_category === 'unbooked_delay',
-  ).length;
-  const warningCount = stuck.filter(
-    (s) => s.sla_category === 'unmatched_warning' || s.sla_category === 'clinical_stalled',
-  ).length;
+  const stuck = q.data?.data ?? [];
+  const breached = stuck.filter((s) => slaCategory[s.sla_category].tone === 'red').length;
 
   return (
-    <div className="stack gap-4">
-      <div className="section-head">
-        <div>
-          <h2>Operator SLA Monitor</h2>
-          <p className="hint">
-            Real-time tracking of delayed, unbooked, and stalled care requests across Lagos.
-          </p>
-        </div>
-        <div className="cluster gap-2">
-          <Pill tone="red">{breachedCount} Breached</Pill>
-          <Pill tone="gold">{warningCount} Warnings</Pill>
-        </div>
-      </div>
-
+    <>
+      <PageHeader
+        title="Bookings needing attention"
+        subtitle="Clinics should confirm within an hour, record check-in or no-show, and add notes within a day."
+        actions={
+          <>
+            <Pill tone="red">{breached} over 2h</Pill>
+            <Pill tone="gold">{stuck.length - breached} warnings</Pill>
+          </>
+        }
+      />
       <Card>
-        {isLoading ? (
-          <p>Analyzing care requests…</p>
+        {q.isPending ? (
+          <Spinner />
+        ) : q.isError ? (
+          <ErrorNote error={q.error} />
         ) : stuck.length === 0 ? (
-          <EmptyState title="All requests within SLA">
-            No care requests are currently breaching response or booking SLA timers.
-          </EmptyState>
+          <EmptyState title="Nothing stuck">Every booking is moving.</EmptyState>
         ) : (
           <div className="table-wrap">
-            <table className="table">
+            <table>
               <thead>
                 <tr>
-                  <th>Request</th>
+                  <th>Problem</th>
                   <th>Patient</th>
-                  <th>Category</th>
-                  <th>Urgency</th>
-                  <th>Age</th>
-                  <th>Offers / Visits</th>
-                  <th>SLA Status</th>
-                  <th>Actions</th>
+                  <th>Clinic</th>
+                  <th>Appointment</th>
+                  <th>Status</th>
+                  <th>Waiting</th>
                 </tr>
               </thead>
               <tbody>
                 {stuck.map((r) => {
                   const sla = slaCategory[r.sla_category];
-                  const urg = urgency[r.urgency];
-                  const hours = Math.floor(r.age_minutes / 60);
-                  const mins = r.age_minutes % 60;
                   return (
-                    <tr key={r.id}>
+                    <tr key={r.appointment_id}>
                       <td>
-                        <strong>#{r.id}</strong>
-                        <div className="hint">{formatDateTime(r.created_at)}</div>
+                        <Pill tone={sla.tone}>{sla.label}</Pill>
+                        <div className="hint">{sla.hint}</div>
                       </td>
                       <td>
                         {r.patient_name}
-                        <div className="hint">{r.patient_email}</div>
-                      </td>
-                      <td>{r.category}</td>
-                      <td>
-                        <Pill tone={urg.tone}>{urg.label}</Pill>
+                        <div className="hint">Visit #{r.id}</div>
                       </td>
                       <td>
-                        {hours > 0 ? `${hours}h ` : ''}
-                        {mins}m
+                        {r.assigned_provider}
+                        {r.centre_name && <div className="hint">{r.centre_name}</div>}
                       </td>
-                      <td>
-                        {r.offers_count} offers · {r.appointments_count} visits
-                      </td>
-                      <td>
-                        <Pill tone={sla.tone}>{sla.label}</Pill>
-                      </td>
-                      <td>
-                        <Link to={`/patient/requests/${r.id}`} className="btn btn-ghost btn-sm">
-                          View
-                        </Link>
-                      </td>
+                      <td>{formatDateTime(r.starts_at)}</td>
+                      <td>{appointmentStatus[r.status].label}</td>
+                      <td>{age(r.age_minutes)}</td>
                     </tr>
                   );
                 })}
@@ -100,6 +80,6 @@ export function SlaDashboardPage() {
           </div>
         )}
       </Card>
-    </div>
+    </>
   );
 }

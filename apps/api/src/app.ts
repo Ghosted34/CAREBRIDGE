@@ -10,6 +10,7 @@ import { adminRouter } from './modules/admin/admin.routes.js';
 import { appointmentNotesRouter } from './modules/appointment_notes/appointment_notes.routes.js';
 import { appointmentsRouter } from './modules/appointments/appointments.routes.js';
 import { authRouter } from './modules/auth/auth.routes.js';
+import { availabilityRouter } from './modules/availability/availability.routes.js';
 import { consentsRouter } from './modules/consents/consents.routes.js';
 import { docsRouter } from './modules/docs/docs.routes.js';
 import { documentsRouter } from './modules/documents/documents.routes.js';
@@ -29,10 +30,14 @@ export function createApp() {
   app.use(helmet());
   app.use(cors({ origin: env.CORS_ORIGIN.split(',').map((o) => o.trim()) }));
   app.use(express.json({ limit: '100kb' }));
+  // API calls only (the SPA's static files don't count). Per IP: a clinic office often shares one
+  // address, so the default leaves room for several staff working at once. Sign-in has its own,
+  // stricter limit (auth.routes.ts).
   app.use(
+    '/api',
     rateLimit({
       windowMs: 15 * 60 * 1000,
-      limit: env.NODE_ENV === 'test' ? 10_000 : 300,
+      limit: env.NODE_ENV === 'test' ? 10_000 : env.API_RATE_LIMIT_PER_15_MIN,
       standardHeaders: true,
       legacyHeaders: false,
       message: { error: { code: 'RATE_LIMITED', message: 'Too many requests, try again later' } },
@@ -46,6 +51,7 @@ export function createApp() {
   const v1 = Router();
   v1.use(
     authRouter,
+    availabilityRouter,
     appointmentNotesRouter,
     consentsRouter,
     notificationsRouter,

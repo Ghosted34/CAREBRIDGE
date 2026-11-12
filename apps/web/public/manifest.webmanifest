@@ -1,6 +1,6 @@
 {
-  "name": "CareBridge Healthcare",
-  "short_name": "CareBridge",
+  "name": "CareLynk",
+  "short_name": "CareLynk",
   "description": "Coordinated healthcare access & verified provider pilot in Lagos",
   "start_url": "/",
   "display": "standalone",

@@ -162,8 +162,19 @@ DB_NAME=carebridge
 DB_USER=your_db_user
 DB_PASSWORD=your_db_password
 JWT_SECRET=a-long-random-secret-string-at-least-32-chars
-AUTO_MIGRATE=true  # migrations apply automatically on app start
+AUTO_MIGRATE=true            # migrations apply automatically on app start
+RUN_WORKER_IN_PROCESS=true   # send SMS/email from the app process (cPanel runs one process)
+NOTIFY_SMS_PROVIDER=log      # termii once you have an account; see notifications.md
+NOTIFY_EMAIL_PROVIDER=log    # smtp once configured
+APP_URL=https://yourdomain.com
 ```
+
+`RUN_WORKER_IN_PROCESS=true` runs the notification sender inside the web app, because Passenger
+starts only one process and there is no separate worker. Leave it `false` where you run `npm run worker`
+separately (Docker).
+
+**MySQL or MariaDB.** cPanel hosts often provide MariaDB. The API avoids MySQL-only SQL
+(`JSON_OVERLAPS`, `FOR UPDATE OF`) so it runs on MariaDB 10.6+ too; MySQL 8 is what CI tests against.
 
 ### 3. Build & deploy
 
@@ -179,7 +190,22 @@ the app. No terminal needed.
 If you prefer manual control, use Option B (CLI) or Option C (raw SQL via
 phpMyAdmin) above.
 
-### 5. Seed (optional, staging/demo)
+### 5. First admin (production)
+
+Sign-up offers patient and clinic accounts only, so create the first admin from the terminal (or the
+cPanel "Run JS script" box) once the app is built. It is safe to re-run; it resets the password.
+
+```bash
+cd /home/username/CAREBRIDGE/apps/api
+ADMIN_EMAIL=you@yourdomain.com ADMIN_NAME="Your Name" ADMIN_PHONE=+2348012345678 \
+ADMIN_PASSWORD='a-long-password' npm run admin:create:prod
+```
+
+That admin verifies clinic sign-ups in the app (Providers → Verify), which also activates the clinic owner's
+account; clinic owners add their centres,
+opening hours, dentists and fees themselves.
+
+### 6. Seed (optional, staging/demo only — refuses `NODE_ENV=production`)
 
 If you have terminal access:
 
@@ -194,8 +220,13 @@ Default accounts:
 - `patient@carebridge.local` / `CareBridge!2026`
 - `owner.lekki@carebridge.local` / `CareBridge!2026`
 - `owner.ikeja@carebridge.local` / `CareBridge!2026`
+- `owner.abuja@carebridge.local` / `CareBridge!2026`
+- `owner.yaba@carebridge.local` / `CareBridge!2026`
 
-### 6. Restart
+The seed is the end state of a staging run where everything was entered through the app (see the header
+of `src/db/seed.ts`). It is re-runnable and updates an older seed in place. It seeds no bookings.
+
+### 7. Restart
 
 After any code change, restart the Node.js app in cPanel
 (Software → Setup Node.js App → Restart). Migrations re-check on every restart

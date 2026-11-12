@@ -20,10 +20,14 @@ export function Button({
   className = '',
   children,
   disabled,
+  type = 'button',
   ...rest
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; busy?: boolean }) {
+  // Default to type="button": a plain <button> in a form submits it, so "Cancel" or "Add another"
+  // would send the form. Submit buttons say type="submit".
   return (
     <button
+      type={type}
       className={`btn btn-${variant} ${className}`}
       disabled={disabled || busy}
       aria-busy={busy || undefined}
@@ -199,6 +203,13 @@ export function PageHeader({
   subtitle?: ReactNode;
   actions?: ReactNode;
 }) {
+  // Browser tab: "Bookings · CareLynk".
+  useEffect(() => {
+    document.title = `${title} · CareLynk`;
+    return () => {
+      document.title = 'CareLynk';
+    };
+  }, [title]);
   return (
     <div className="page-header">
       <div>

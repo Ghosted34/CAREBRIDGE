@@ -89,7 +89,7 @@ Edit `apps/api/.env`: `DB_PASSWORD` = the password from step 1, and a `JWT_SECRE
 npm install
 npm run migrate:status           # shows 18 pending
 npm run migrate                  # creates the tables
-npm run seed                     # sample accounts + two Lagos clinics
+npm run seed                     # demo accounts + three clinics (Ikeja, Lekki/VI, Abuja)
 npm run dev                      # http://localhost:4000 — restarts when you save
 ```
 
@@ -117,32 +117,37 @@ Open **http://localhost:3000**. The sign-in page lists the seeded accounts in de
 
 ## Seeded accounts
 
-`npm run seed` is safe to run repeatedly (it skips anything that already exists) and refuses to run when
-`NODE_ENV=production`. Every account uses the password **`CareBridge!2026`** (set `SEED_PASSWORD` to change it
-before seeding).
+The seed is the end state of a staging run on an empty database where everything was entered **through the
+app** (sign-ups, admin approval, centres, hours, dentists, fees). `npm run seed` is re-runnable: it updates
+existing rows (including those an older seed made) instead of duplicating them, seeds no bookings, and refuses to
+run when `NODE_ENV=production`. Every account uses the password **`CareBridge!2026`** (`SEED_PASSWORD` to change).
 
-| Email | Role | What to try |
+| Email | Role | What's there |
 |---|---|---|
-| `patient@carebridge.local` | Patient | New request → choose an offer → book |
-| `owner.lekki@carebridge.local` | Owner, Lekki Smiles Dental (dentistry, endodontics) | Request queue → make an offer; My patients; Appointments |
-| `owner.ikeja@carebridge.local` | Owner, Ikeja Dental Centre (dentistry, orthodontics) | A second clinic to compete for the same request |
-| `operator@carebridge.local` | Operator | Overview, queue (offer on any clinic's behalf), journeys |
-| `admin@carebridge.local` | Admin | Providers (add / verify / link staff), Users (approve sign-ups) |
+| `patient@carebridge.local` | Patient, Ada Okafor, lives in **Ikeja** | Book a visit → search → book |
+| `owner.ikeja@carebridge.local` | Owner, Ikeja Dental Centre (dentistry, orthodontics) | Centre *Allen Avenue*, Ikeja; Mon–Fri 08:00–18:00, Sat 10:00–14:00; ₦12,000 |
+| `owner.lekki@carebridge.local` | Owner, Lekki Smiles Dental (dentistry, endodontics) | Centres *Lekki Phase 1* (₦15,000) and *Victoria Island* (₦20,000, own fee) |
+| `owner.abuja@carebridge.local` | Owner, Capital Dental Clinic (dentistry, periodontics) | Centre *Wuse 2*, FCT — shows as "Further away" for a Lagos patient |
+| `owner.yaba@carebridge.local` | Owner, Yaba Dental (dentistry) | Signed itself up; centre *Herbert Macaulay*, Yaba, weekdays 09:00–17:00; no dentists or fee yet |
+| `operator@carebridge.local` | Operator | Overview; *Needs attention* (unconfirmed bookings, missing outcomes) |
+| `admin@carebridge.local` | Admin | Providers (verify), Users (approve sign-ups) |
 
-## Walk through the whole journey
+## Walk through the whole flow
 
-Use a normal window for one role and a private/incognito window (or another browser) for the other,
-because each tab keeps its own sign-in.
+Use a normal window for one role and a private/incognito window for the other (each tab keeps its own sign-in).
 
-1. **Patient** → *New request* → answer **No** to the emergency question → describe the problem → *Send request*.
-   (Answer **Yes** once to see the emergency redirect — nothing is stored.)
-2. **owner.lekki** → *Request queue* → *Make an offer* → add a message → *Send offer*.
-3. **Patient** → open the request → *Choose* the offer → *Book appointment* (Lagos time).
-   Book the same time again to see the double-booking protection.
-4. **owner.lekki** → *My patients* → *Start assessment* → … ; *Appointments* → *Confirm* → *Check in* → *Complete*.
-5. **Admin** → *Providers* → *Add provider* → *Verify*. Register a new clinic-staff account at `/register`
-   (it waits for approval) → *Users* → *Approve* → *Providers* → *Staff* → link them. Sign in as them.
-6. **Operator** → *Journeys* to see every patient's progress.
+1. **Patient** → *Book a visit* → pick *Toothache or pain* → keep the default dates → *Find clinics*.
+   Ikeja comes first ("In your area"), then Lekki/VI ("Same state"), then Abuja.
+2. Pick a time → choose in person or video/voice → answer **No** to the emergency question → *Send booking
+   request*. (Answer **Yes** once to see the emergency redirect — nothing is stored.)
+3. **owner.ikeja** → *Bookings* → *To confirm* → *Confirm* → *Check in*. The notes form opens.
+4. Add a *Prescription* note, then *Book a follow-up* (it starts confirmed), then a *Close visit* note.
+5. **Patient** → *My visits* → open the visit: appointments, statuses and the clinic's notes.
+6. **owner.lekki** → *Centres & hours*: change opening hours or add a dentist; search again as the patient.
+7. **Operator** → *Needs attention* lists bookings left unconfirmed, not checked in, or with no notes.
+
+To start from nothing instead: an empty database, `npm run admin:create` for the first admin, then register
+clinics and patients at `/register`.
 
 ## Reset to a clean, seeded database
 

@@ -19,11 +19,17 @@ const EnvSchema = z.object({
   NOTIFY_SMS_PROVIDER: z.string().default('log'),
   NOTIFY_EMAIL_PROVIDER: z.string().default('log'),
   APP_URL: z.string().default('http://localhost:3000'), // used for links in emails
+  /** Requests per IP per 15 minutes across /api (sign-in has a separate, stricter limit). */
+  API_RATE_LIMIT_PER_15_MIN: z.coerce.number().int().positive().default(1000),
   WORKER_POLL_MS: z.coerce.number().int().min(500).default(5000),
   // When true, applies pending database migrations on server startup.
   // Required for single-container deployments (Docker, cPanel) where there
   // is no separate CLI step to run migrations before the API starts.
-  AUTO_MIGRATE: z.coerce.boolean().default(false),
+  // Note: z.stringbool, not z.coerce.boolean — coerce turns the text "false" into true.
+  AUTO_MIGRATE: z.stringbool().default(false),
+  // When true, the API process also runs the notification worker (sends queued SMS/email).
+  // Use on hosts that run a single Node process, e.g. cPanel. Elsewhere run `npm run worker`.
+  RUN_WORKER_IN_PROCESS: z.stringbool().default(false),
 });
 
 const parsed = EnvSchema.safeParse(process.env);

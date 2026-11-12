@@ -4,10 +4,16 @@ import type {
   AdminProvider,
   AdminUser,
   AppNotification,
+  AppointmentNote,
+  BookingResult,
+  FreeTime,
+  NoteType,
+  Problem,
+  SearchPeriod,
+  SearchResponse,
+  TimeOfDay,
   Appointment,
   AppointmentMode,
-  AppointmentType,
-  AssignedRequest,
   AuditLog,
   CareRequest,
   Caregiver,
@@ -22,7 +28,6 @@ import type {
   Envelope,
   ListEnvelope,
   LoginResult,
-  MatchingProvider,
   Me,
   Metrics,
   PaymentInitResult,
@@ -34,16 +39,12 @@ import type {
   ProviderMember,
   ProviderRole,
   ProviderSchedule,
-  ProviderSlot,
-  QueueItem,
   ReferralStatus,
   RequestStatus,
   ServiceEstimate,
-  SlotStatus,
   StaffAccount,
   StuckRequest,
   TeamRole,
-  Urgency,
   UserStatus,
   VerificationStatus,
 } from './types';
@@ -118,51 +119,48 @@ export const api = {
     request<Envelope<{ removed: boolean }>>('DELETE', `/providers/${providerId}/team/${userId}`),
   staffAccounts: (q: string) => get<ListEnvelope<StaffAccount>>(`/staff-accounts${qs({ q })}`),
 
-  // care requests
-  createRequest: (body: {
-    specialty: string;
-    service_type: string;
-    description: string;
-    preferred_city: string;
-    urgency: Urgency;
-    has_emergency_symptoms: boolean;
-    /** Set when the patient picked a clinic in the directory: routes the request straight to it. */
-    target_provider_id?: number;
-  }) => post<Envelope<{ id: number; status: RequestStatus }>>('/requests', body),
+  // search & booking
+  problems: () => get<Envelope<Problem[]>>('/problems'),
+  search: (body: { problem: string; periods: SearchPeriod[]; city?: string; state?: string }) =>
+    post<Envelope<SearchResponse>>('/search', body),
+  centreAvailability: (
+    centreId: number,
+    q: { from_date: string; to_date: string; time_of_day?: TimeOfDay },
+  ) =>
+    get<Envelope<{ centre_id: number; free_times: FreeTime[] }>>(
+      `/centres/${centreId}/availability${qs(q)}`,
+    ),
+  /**
+   * Book a free time. New visit: `problem` + the emergency answer. Follow-up on a visit:
+   * `care_request_id` instead (clinic staff may book these for their patient).
+   */
+  book: (body: {
+    centre_id: number;
+    starts_at: string;
+    appointment_mode?: AppointmentMode;
+    caregiver_id?: number;
+    problem?: string;
+    details?: string;
+    has_emergency_symptoms?: boolean;
+    care_request_id?: number;
+  }) => post<Envelope<BookingResult>>('/appointments', body),
+
+  // visits (care requests are created by booking)
   myRequests: () => get<ListEnvelope<CareRequestSummary>>('/requests/mine'),
   request: (id: number) => get<Envelope<CareRequest>>(`/requests/${id}`),
   cancelRequest: (id: number) =>
     post<Envelope<{ id: number; status: RequestStatus }>>(`/requests/${id}/cancel`),
-  queue: (p: { specialty?: string; provider_id?: number } = {}) =>
-    get<ListEnvelope<QueueItem>>(`/requests/queue${qs(p)}`),
-  assigned: (p: { status?: RequestStatus; provider_id?: number } = {}) =>
-    get<ListEnvelope<AssignedRequest>>(`/requests/assigned${qs(p)}`),
-  progressRequest: (id: number, step: JourneyStep) =>
-    post<Envelope<{ id: number; status: RequestStatus }>>(`/requests/${id}/${step}`),
 
   // appointments
-  book: (body: {
-    care_request_id: number;
-    provider_id: number;
-    centre_id?: number;
-    starts_at: string;
-    ends_at: string;
-    appointment_type: AppointmentType;
-    appointment_mode?: AppointmentMode;
-    slot_id?: number;
-    caregiver_id?: number;
-  }) => post<Envelope<{ id: number; provider_id: number; status: string }>>('/appointments', body),
   myAppointments: (p: { provider_id?: number } = {}) =>
     get<ListEnvelope<Appointment>>(`/appointments/mine${qs(p)}`),
   appointmentAction: (id: number, verb: AppointmentVerb) =>
     post<Envelope<{ id: number }>>(`/appointments/${id}/${verb}`),
-  updateRequestProvider: (id: number, body: { provider_id: number; centre_id?: number }) =>
-    post<Envelope<{ id: number; provider_id: number; status: string }>>(
-      `/appointments/${id}/provider`,
-      body,
-    ),
+  appointmentNotes: (id: number) => get<ListEnvelope<AppointmentNote>>(`/appointments/${id}/notes`),
+  addAppointmentNote: (id: number, body: { note_type: NoteType; summary: string }) =>
+    post<Envelope<AppointmentNote>>(`/appointments/${id}/notes`, body),
 
-  // capacity & slots
+  // opening hours (free times are computed from these)
   providerSchedules: (providerId: number) =>
     get<Envelope<ProviderSchedule[]>>(`/providers/${providerId}/schedules`),
   providerSchedulesByCentre: (providerId: number, centreId: number) =>
@@ -176,30 +174,6 @@ export const api = {
       centre_id: centreId,
       schedules,
     }),
-  providerSlots: (
-    providerId: number,
-    query: { from?: string; to?: string; status?: SlotStatus } = {},
-  ) => get<Envelope<ProviderSlot[]>>(`/providers/${providerId}/slots${qs(query)}`),
-  createSlot: (
-    providerId: number,
-    body: { centre_id: number; start_time: string; end_time: string },
-  ) => post<Envelope<ProviderSlot>>(`/providers/${providerId}/slots`, body),
-  generateSlots: (
-    providerId: number,
-    centreId: number,
-    body: { start_date: string; end_date: string },
-  ) =>
-    post<Envelope<{ created_count: number }>>(`/providers/${providerId}/slots/generate`, {
-      centre_id: centreId,
-      ...body,
-    }),
-  cancelSlot: (id: number) => post<Envelope<ProviderSlot>>(`/slots/${id}/cancel`),
-  updateSlotPrice: (id: number, body: { price: number; currency: string }) =>
-    post<Envelope<ProviderSlot>>(`/slots/${id}/price`, body),
-  centreSlots: (
-    centreId: number,
-    query: { from?: string; to?: string; status?: SlotStatus } = {},
-  ) => get<Envelope<ProviderSlot[]>>(`/centres/${centreId}/slots${qs(query)}`),
 
   // operating centres (owner-managed)
   centres: (providerId: number, careRequestId?: number) =>
@@ -275,10 +249,6 @@ export const api = {
   // patient KYC
   patientKYC: () => get<Envelope<PatientKYC>>('/patient/kyc'),
   updatePatientKYC: (body: PatientKYC) => post<Envelope<PatientKYC>>('/patient/kyc', body),
-
-  // matching
-  matchesForRequest: (requestId: number) =>
-    get<Envelope<MatchingProvider[]>>(`/requests/${requestId}/matches`),
 
   // referrals
   createReferral: (
@@ -373,7 +343,9 @@ export const api = {
     specialties: string[];
   }) => post<Envelope<{ id: number }>>('/admin/providers', body),
   setVerification: (id: number, verification_status: 'verified' | 'rejected' | 'suspended') =>
-    post<Envelope<unknown>>(`/admin/providers/${id}/verification`, { verification_status }),
+    post<
+      Envelope<{ id: number; verification_status: VerificationStatus; activated_owners: number[] }>
+    >(`/admin/providers/${id}/verification`, { verification_status }),
   members: (providerId: number) =>
     get<Envelope<ProviderMember[]>>(`/admin/providers/${providerId}/members`),
   addMember: (providerId: number, user_id: number, provider_role: ProviderRole) =>
@@ -382,6 +354,5 @@ export const api = {
     request<Envelope<unknown>>('DELETE', `/admin/providers/${providerId}/members/${userId}`),
 };
 
-export type JourneyStep = 'start-assessment' | 'plan-treatment' | 'start-treatment' | 'complete';
 export type AppointmentVerb =
   'confirm' | 'decline' | 'check-in' | 'complete' | 'no-show' | 'cancel';

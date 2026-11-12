@@ -29,9 +29,8 @@ const FEE_TYPES: FeeType[] = [
 ];
 
 /**
- * Clinic fees, managed by the clinic owner. Each fee type can be set clinic-wide
- * or scoped to a specific operating centre. Slot generation defaults to the
- * consultancy fee unless a price is overridden per slot.
+ * Clinic fees, managed by the clinic owner. Each fee type can be set clinic-wide or for one
+ * operating centre; a centre's own fee wins. Patients see the consultation fee when they search.
  */
 export function FeePage() {
   const { user } = useAuth();
@@ -48,6 +47,14 @@ export function FeePage() {
     queryFn: () => api.providerFees(providerId!),
     enabled: !!providerId,
   });
+
+  const centres = useQuery({
+    queryKey: ['centres', providerId],
+    queryFn: () => api.centres(providerId!),
+    enabled: !!providerId,
+  });
+  const centreName = (id: number) =>
+    centres.data?.data.find((c) => c.id === id)?.name ?? `Centre #${id}`;
 
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['fees'] });
 
@@ -131,7 +138,7 @@ export function FeePage() {
               <Spinner />
             ) : feeList.length === 0 ? (
               <EmptyState title="No fees set yet">
-                Add your first fee below. Slot generation defaults to the consultancy fee.
+                Add your first fee below. Patients see the consultation fee when they search.
               </EmptyState>
             ) : (
               <ul className="list">
@@ -140,7 +147,7 @@ export function FeePage() {
                     <div className="list-item-main">
                       <div className="list-item-title">
                         {feeType[f.fee_type]}
-                        {f.centre_id ? ` &middot; centre #${f.centre_id}` : ' &middot; all centres'}
+                        {f.centre_id ? ` · ${centreName(f.centre_id)}` : ' · all centres'}
                       </div>
                       <div className="meta">
                         <span>
@@ -212,6 +219,11 @@ export function FeePage() {
                     onChange={(e) => setFormCentreId(e.target.value ? Number(e.target.value) : '')}
                   >
                     <option value="">All centres</option>
+                    {(centres.data?.data ?? []).map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
                   </select>
                 </Field>
                 <Field label="Currency">

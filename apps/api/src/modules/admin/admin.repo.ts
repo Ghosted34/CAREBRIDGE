@@ -77,6 +77,16 @@ export async function setVerification(db: Db, id: number, status: string) {
   await db.execute('UPDATE providers SET verification_status = ? WHERE id = ?', [status, id]);
 }
 
+/** Owners of a facility whose accounts still await approval (a clinic self-registration). */
+export async function pendingOwnerIds(db: Db, providerId: number): Promise<number[]> {
+  const [rows] = await db.execute<Row[]>(
+    `SELECT u.id FROM provider_users pu JOIN users u ON u.id = pu.user_id
+      WHERE pu.provider_id = ? AND pu.provider_role = 'owner' AND u.status = 'pending'`,
+    [providerId],
+  );
+  return rows.map((r) => Number(r.id));
+}
+
 export async function upsertMember(db: Db, providerId: number, userId: number, role: string) {
   await db.execute(
     `INSERT INTO provider_users(provider_id, user_id, provider_role) VALUES (?, ?, ?)
@@ -156,30 +166,32 @@ export async function listAuditLogs(
   return rows;
 }
 
+/**
+ * Work that is waiting too long (pilot KPI: clinics acknowledge booking requests within 2 hours).
+ *  - request_unconfirmed: a booking request the clinic hasn't confirmed or declined (warning 1h, breach 2h)
+ *  - visit_not_recorded: a confirmed visit whose time passed 2h ago with no check-in or no-show
+ *  - notes_missing: checked in over 24h ago and still not closed with notes
+ */
 export async function listStuckRequests(db: Db) {
   const [rows] = await db.query<Row[]>(
-    `SELECT r.id, r.patient_user_id, u.full_name AS patient_name, u.email AS patient_email,
-            r.specialty AS category, r.urgency, r.status, r.preferred_city AS city,
-            r.assigned_provider_id, p.display_name AS assigned_provider,
-            r.created_at, r.updated_at,
-            TIMESTAMPDIFF(MINUTE, r.created_at, NOW()) AS age_minutes,
-            (SELECT COUNT(*) FROM appointments ap WHERE ap.care_request_id = r.id AND ap.status != 'cancelled') AS appointments_count,
+    `SELECT a.id AS appointment_id, a.care_request_id AS id, a.patient_user_id, u.full_name AS patient_name,
+            a.status, a.starts_at, p.display_name AS assigned_provider, a.provider_id AS assigned_provider_id,
+            pc.name AS centre_name, a.created_at,
+            TIMESTAMPDIFF(MINUTE, a.created_at, UTC_TIMESTAMP()) AS age_minutes,
             CASE
-              WHEN r.status IN ('submitted','matching') AND TIMESTAMPDIFF(MINUTE, r.created_at, NOW()) >= 120 THEN 'unmatched_breach'
-              WHEN r.status IN ('submitted','matching') AND TIMESTAMPDIFF(MINUTE, r.created_at, NOW()) >= 60 THEN 'unmatched_warning'
-              WHEN r.status = 'provider_accepted' AND TIMESTAMPDIFF(HOUR, r.updated_at, NOW()) >= 24 THEN 'unbooked_delay'
-              WHEN r.status IN ('assessment','treatment_planned','in_progress') AND TIMESTAMPDIFF(DAY, r.updated_at, NOW()) >= 7 THEN 'clinical_stalled'
-              ELSE 'standard'
+              WHEN a.status = 'requested' AND TIMESTAMPDIFF(MINUTE, a.created_at, UTC_TIMESTAMP()) >= 120 THEN 'request_unconfirmed_breach'
+              WHEN a.status = 'requested' THEN 'request_unconfirmed_warning'
+              WHEN a.status = 'confirmed' THEN 'visit_not_recorded'
+              ELSE 'notes_missing'
             END AS sla_category
-       FROM care_requests r
-       JOIN users u ON u.id = r.patient_user_id
-       LEFT JOIN providers p ON p.id = r.assigned_provider_id
-      WHERE (
-        (r.status IN ('submitted','matching') AND TIMESTAMPDIFF(MINUTE, r.created_at, NOW()) >= 60)
-        OR (r.status = 'provider_accepted' AND TIMESTAMPDIFF(HOUR, r.updated_at, NOW()) >= 24)
-        OR (r.status IN ('assessment','treatment_planned','in_progress') AND TIMESTAMPDIFF(DAY, r.updated_at, NOW()) >= 7)
-      )
-      ORDER BY r.created_at ASC`,
+       FROM appointments a
+       JOIN users u ON u.id = a.patient_user_id
+       JOIN providers p ON p.id = a.provider_id
+       LEFT JOIN provider_centres pc ON pc.id = a.centre_id
+      WHERE (a.status = 'requested' AND TIMESTAMPDIFF(MINUTE, a.created_at, UTC_TIMESTAMP()) >= 60)
+         OR (a.status = 'confirmed' AND a.ends_at < UTC_TIMESTAMP() - INTERVAL 2 HOUR)
+         OR (a.status = 'checked_in' AND a.updated_at < UTC_TIMESTAMP() - INTERVAL 24 HOUR)
+      ORDER BY a.created_at ASC`,
   );
   return rows;
 }

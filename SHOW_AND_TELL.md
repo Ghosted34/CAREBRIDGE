@@ -1,3 +1,8 @@
+> **Superseded (11 Nov 2026).** This was written for the earlier request → offers → journey flow, which has been
+> retired. The current flow (search free times → book → confirm → check-in → notes) is described in
+> [docs/decisions/0005-mvp-realignment.md](docs/decisions/0005-mvp-realignment.md) and walked through in
+> [docs/development.md](docs/development.md#walk-through-the-whole-flow).
+
 # CareBridge — Complete Step-by-Step Walkthrough Guide
 ### From User Account Creation to Completed Care Journey (Lagos Dental Pilot)
 

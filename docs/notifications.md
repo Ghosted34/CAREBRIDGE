@@ -1,6 +1,6 @@
 # Notifications and providers
 
-How CareBridge tells people about offers, bookings and progress, and how to plug in SMS/email providers.
+How CareBridge tells people about bookings, confirmations and visit notes, and how to plug in SMS/email providers.
 Events and who receives them: [architecture.md → Notifications](architecture.md#notifications).
 
 ## How sending works

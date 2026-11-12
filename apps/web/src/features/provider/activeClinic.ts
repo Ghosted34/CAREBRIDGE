@@ -4,8 +4,8 @@ import { useAuth } from '../../auth/authContext';
 
 /**
  * Which clinic a staff member is working as, shared by every component on screen. A tiny store
- * (rather than component state) because the switcher lives in the topbar while the queue,
- * appointments, offers and capacity live in the page: they all have to follow the same choice.
+ * (rather than component state) because the switcher lives in the topbar while bookings,
+ * centres and hours live in the page: they all have to follow the same choice.
  * Persisted in sessionStorage so a refresh doesn't silently switch clinics.
  */
 const STORAGE_KEY = 'carebridge.activeClinicId';
@@ -52,7 +52,7 @@ export interface ActiveClinic {
   setClinicId: (providerId: number) => void;
 }
 
-/** The clinic the signed-in user is acting for: their queue, appointments, offers and capacity. */
+/** The clinic the signed-in user is acting for: their bookings, centres and hours. */
 export function useActiveClinic(): ActiveClinic {
   const { user } = useAuth();
   const stored = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);

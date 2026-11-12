@@ -1,8 +1,10 @@
 # Architecture
 
-CareBridge is a coordination layer between patients and existing healthcare capacity in Lagos. It does
-not run clinics: it routes a patient's request to verified providers, records who agreed to what, and
-tracks the journey through assessment, treatment and follow-up.
+CareBridge (branded CareLynk in the app) is a coordination layer between patients and existing dental
+capacity in Lagos. It does not run clinics or the consultation itself: it shows a patient verified clinics near
+them with real free times, books one, and records what happened — check-in, and the clinic's notes
+(prescription, referral, follow-up, closing). Consultations can be in person or by video/voice call arranged
+by the clinic; CareLynk only needs to know it happened.
 
 ## Components
 
@@ -27,30 +29,30 @@ flowchart LR
 | MySQL | `docker-compose.yml` | System of record. Schema owned by migrations in `apps/api/src/db/migrations`. |
 | Worker | `apps/api/src/worker.ts` | Sends queued SMS/email notifications with retries. Same image as the API; several can run at once. |
 
-Planned: installable web app (PWA), more SMS/email provider adapters, payment gateway webhooks,
+Planned: more SMS/email provider adapters, one-time codes for staff on new devices, payment gateway webhooks,
 encrypted object storage for clinical documents.
 
-## The care journey
+## The booking flow
 
-The product design's key rule: **a request, an offer, a referral, an appointment and a treatment are
-different events.** Each is its own table with its own lifecycle.
+Providers are **clinics** (facilities of dentists) with one or more **operating centres**. A **visit**
+(`care_requests`) is one problem from first booking to closing note; it can hold several **appointments**.
+Decision record: [ADR 0005](decisions/0005-mvp-realignment.md).
 
 ```mermaid
 sequenceDiagram
   actor P as Patient
   participant API
-  actor S as Provider staff
-  actor O as Operator
-  P->>API: POST /requests (has_emergency_symptoms=false)
-  Note over API: emergency=true → 422 + guidance, nothing stored
-  API-->>S: appears in /requests/queue (matching specialty + city, verified providers only)
-  S->>API: POST /requests/:id/offers
-  O-->>API: (or operator offers on a provider's behalf — manual matching)
-  P->>API: GET /requests/:id/offers → POST /offers/:id/accept
-  Note over API: request → provider_accepted, other offers expire. No appointment yet.
-  P->>API: POST /appointments (or staff books)
-  S->>API: POST /appointments/:id/confirm, /check-in, /complete
-  S->>API: POST /requests/:id/start-assessment → plan-treatment → start-treatment → complete
+  actor S as Clinic staff
+  P->>API: POST /search (problem, periods I'm free)
+  Note over API: centres of verified clinics that treat it,<br/>free times = opening hours − bookings, nearest area first
+  P->>API: POST /appointments (centre, free time, emergency answer)
+  Note over API: emergency=yes → 422 + 112/767 guidance, nothing stored<br/>else visit + appointment (requested), time re-checked under a centre lock
+  API-->>S: notification: new booking request
+  S->>API: confirm (or decline)
+  S->>API: check-in (or no-show)
+  S->>API: POST /appointments/:id/notes (prescription, referral, follow-up…)
+  S->>API: book follow-up (confirmed) or closing note → visit closed
+  API-->>P: notified; reads the notes on the visit page
 ```
 
 Status machines for every entity are defined once in `apps/api/src/lib/stateMachine.ts`; see
@@ -66,18 +68,14 @@ switched-off channel, a missing address or a suspended user are `skipped`.
 
 | Event | Who is told | Channels |
 |---|---|---|
-| New request | owners/clinicians/schedulers of every matching verified clinic | in-app |
-| Offer made | the patient | in-app, SMS |
-| Offer accepted | owners/clinicians/schedulers of that clinic | in-app, email |
-| Offer declined | the staff member who made it | in-app |
-| Appointment booked | the other side (clinic staff if the patient booked, else the patient) | in-app + email (clinic) / SMS (patient) |
-| Appointment confirmed | the patient | in-app, SMS |
-| Appointment cancelled | the other side | in-app + SMS (patient) / email (clinic) |
-| Journey step (assessment, plan, treatment, completed) | the patient | in-app |
-| Request cancelled | clinics with an open offer, and the assigned clinic | in-app |
+| Booking requested | owners/clinicians/schedulers of that clinic | in-app, email |
+| Follow-up booked by the clinic | the patient | in-app, SMS |
+| Booking confirmed | the patient | in-app, SMS |
+| Booking declined or cancelled | the other side | in-app + SMS (patient) / email (clinic) |
+| Note added after a visit | the patient (no note text in the message) | in-app |
+| Visit cancelled | the clinic | in-app |
 | Staff account approved | that staff member | in-app, email |
 | Added to a clinic team | that staff member | in-app, email |
-| Request directed at a clinic | owners/clinicians/schedulers of that clinic only | in-app, email |
 
 Messages never contain clinical text: payloads hold only IDs, clinic names and times (enforced in code and
 tested), and SMS text is deliberately generic. Templates live in `modules/notifications/templates.ts`.
@@ -97,12 +95,14 @@ Two layers, checked on every request:
 
 | Action | Who |
 |---|---|
-| Make / withdraw an offer | owner, clinician, scheduler of that provider; operator; admin |
-| Accept / decline an offer | the patient who made the request |
-| Book an appointment | the patient; any staff of the assigned provider; operator; admin |
-| Confirm / check in / complete / no-show | staff of the provider; operator; admin |
-| Progress the clinical journey | owner or clinician of the assigned provider; operator; admin |
-| Add / remove clinic team members | `owner` of that verified clinic; operator; admin |
+| Search; book a new visit | the patient |
+| Book a follow-up on a visit | the patient; staff of that clinic |
+| Confirm / decline / check in / no-show / complete | staff of the clinic; operator; admin |
+| Write a prescription or referral note | owner or clinician of the clinic |
+| Write a follow-up or closing note | owner, clinician or scheduler of the clinic |
+| Read notes | the patient and staff of the clinic only |
+| Centres, dentists, fees | owner of the clinic; operator; admin (opening hours: owner or scheduler) |
+| Add / remove clinic team members | owner of that verified clinic; operator; admin |
 | Verify providers, approve staff, link members | admin |
 
 The API reloads the user on every request, so suspending an account takes effect immediately.

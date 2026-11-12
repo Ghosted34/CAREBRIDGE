@@ -21,7 +21,7 @@ export function HomePage() {
             ) : (
               <>
                 <Link to="/register" className="btn btn-gold">
-                  Request dental care →
+                  Book a dental visit →
                 </Link>
                 <Link to="/providers" className="btn btn-ghost">
                   Browse verified providers
@@ -33,32 +33,32 @@ export function HomePage() {
         <div className="hero-card">
           <h3>How it works</h3>
           <ol>
-            <li>Describe your problem and where you are.</li>
-            <li>Verified providers offer to see you.</li>
-            <li>Pick one and book a time that suits you.</li>
-            <li>Track assessment, treatment and follow-up.</li>
+            <li>Pick your problem and the days you're free.</li>
+            <li>See verified clinics near you with open times.</li>
+            <li>Send a booking request; the clinic confirms it.</li>
+            <li>After your visit, read the clinic's notes and follow-ups.</li>
           </ol>
         </div>
       </section>
 
-      <h2 className="section-title">Built for everyone in the journey</h2>
+      <h2 className="section-title">Built for patients, clinics and the team in between</h2>
       <div className="grid grid-3">
         <div className="card">
           <h3>Patients</h3>
           <p className="muted">
-            One request instead of calling clinic after clinic. See who responded and why.
+            No more calling clinic after clinic. See real open times and fees near you.
           </p>
         </div>
         <div className="card">
           <h3>Clinics & specialists</h3>
           <p className="muted">
-            Qualified requests that match your services, and a clear view of your patients.
+            Bookings that match your services, across all your centres, with notes after each visit.
           </p>
         </div>
         <div className="card">
           <h3>CareLynk operators</h3>
           <p className="muted">
-            Spot stuck requests, match by hand when needed and keep journeys moving.
+            Spot unconfirmed bookings and visits with no outcome, and nudge clinics.
           </p>
         </div>
       </div>

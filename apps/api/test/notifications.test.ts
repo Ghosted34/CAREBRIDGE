@@ -11,11 +11,11 @@ import { MAX_ATTEMPTS, processBatch } from '../src/modules/notifications/worker.
 import {
   acceptedRequest,
   api,
-  makeProvider,
-  makeRequest,
+  bookingBody,
+  inHours,
+  makeClinic,
   makeStaff,
   makeUser,
-  requestBody,
   resetDb,
 } from './helpers.js';
 
@@ -52,20 +52,22 @@ function recordingProvider<C extends Channel>(
 }
 
 describe('events create notifications', () => {
-  it('new request → in-app notice to staff of matching verified clinics only', async () => {
+  it('a booking request notifies every member of that clinic, and nobody else', async () => {
     const patient = await makeUser('patient');
-    const match = await makeStaff(await makeProvider({ specialties: ['dentistry'] }), 'clinician');
-    const receptionist = await makeStaff(
-      await makeProvider({ specialties: ['dentistry'] }),
-      'receptionist',
-    );
-    const otherSpecialty = await makeStaff(await makeProvider({ specialties: ['cardiology'] }));
-    const unverified = await makeStaff(await makeProvider({ verified: false }));
-    await makeRequest(patient);
-    expect(await kinds(match.id)).toEqual(['new_request:in_app:sent']);
-    expect(await kinds(receptionist.id)).toEqual([]);
-    expect(await kinds(otherSpecialty.id)).toEqual([]);
-    expect(await kinds(unverified.id)).toEqual([]);
+    const { providerId, centreId, owner } = await makeClinic();
+    const receptionist = await makeStaff(providerId, 'receptionist');
+    const otherClinic = await makeClinic();
+    await api
+      .post('/api/v1/appointments')
+      .set(patient.auth)
+      .send(bookingBody(centreId, inHours(6)));
+    for (const u of [owner, receptionist]) {
+      expect(await kinds(u.id)).toEqual([
+        'appointment_booked_provider:in_app:sent',
+        'appointment_booked_provider:email:queued',
+      ]);
+    }
+    expect(await kinds(otherClinic.owner.id)).toEqual([]);
   });
 
   it('booking, confirming and cancelling notify the other side', async () => {
@@ -77,12 +79,6 @@ describe('events create notifications', () => {
     expect(p).toContain('appointment_confirmed:sms:queued');
     expect(p).toContain('appointment_cancelled_patient:sms:queued');
     expect(p).not.toContain('appointment_booked_patient:in_app:sent'); // patient booked it themselves
-  });
-
-  it('journey steps notify the patient in-app', async () => {
-    const { patient, staff, requestId } = await acceptedRequest();
-    await api.post(`/api/v1/requests/${requestId}/start-assessment`).set(staff.auth);
-    expect(await kinds(patient.id)).toContain('request_progress:in_app:sent');
   });
 
   it('cancelling a request tells the assigned clinic', async () => {
@@ -107,20 +103,23 @@ describe('events create notifications', () => {
   it('never stores or renders clinical text', async () => {
     const secret = 'Severe pain lower left molar, possible abscess';
     const patient = await makeUser('patient');
-    const providerId = await makeProvider();
-    const _staff = await makeStaff(providerId);
-    const _r = await api
-      .post('/api/v1/requests')
+    const { centreId, owner } = await makeClinic({ specialties: ['endodontics'] });
+    const r = await api
+      .post('/api/v1/appointments')
       .set(patient.auth)
-      .send(requestBody({ description: secret, service_type: 'Root canal assessment' }));
+      .send(bookingBody(centreId, inHours(6), { problem: 'root_canal', details: secret }));
+    expect(r.status).toBe(201);
+    await api.post(`/api/v1/appointments/${r.body.data.id}/confirm`).set(owner.auth);
     const stored = JSON.stringify(await rows());
     expect(stored).not.toContain('molar');
     expect(stored).not.toContain('Root canal');
-    const inbox = await api.get('/api/v1/notifications').set(patient.auth);
-    expect(JSON.stringify(inbox.body)).not.toContain('molar');
-    await expect(notify(pool, [patient.id], 'new_request', { description: 'x' })).rejects.toThrow(
-      /must not contain/,
-    );
+    for (const who of [patient, owner]) {
+      const inbox = await api.get('/api/v1/notifications').set(who.auth);
+      expect(JSON.stringify(inbox.body)).not.toContain('molar');
+    }
+    await expect(
+      notify(pool, [patient.id], 'appointment_confirmed', { description: 'x' }),
+    ).rejects.toThrow(/must not contain/);
   });
 });
 
@@ -149,7 +148,8 @@ describe('inbox endpoints', () => {
   });
 
   it('read-all clears the count', async () => {
-    const { staff } = await acceptedRequest();
+    const { staff, apptId, patient } = await acceptedRequest();
+    await api.post(`/api/v1/appointments/${apptId}/cancel`).set(patient.auth);
     expect(
       (await api.get('/api/v1/notifications/unread-count').set(staff.auth)).body.data.count,
     ).toBe(2);

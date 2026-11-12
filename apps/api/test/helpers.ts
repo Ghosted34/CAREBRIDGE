@@ -9,6 +9,7 @@ import type { ProviderRole, Role } from '../src/types.js';
 
 export const api = supertest(createApp());
 
+// Every table tests can write to (keep in step with migrations — a missing one leaks between tests).
 const TABLES = [
   'audit_logs',
   'notifications',
@@ -16,8 +17,15 @@ const TABLES = [
   'payments',
   'service_estimates',
   'clinical_referrals',
+  'clinical_documents',
+  'appointment_notes',
   'appointments',
   'care_requests',
+  'provider_slots',
+  'provider_schedules',
+  'provider_caregivers',
+  'provider_fees',
+  'provider_centres',
   'provider_users',
   'providers',
   'users',
@@ -106,48 +114,103 @@ export async function makeStaff(providerId: number, providerRole: ProviderRole =
   return user;
 }
 
-export const requestBody = (over: Record<string, unknown> = {}) => ({
-  specialty: 'dentistry',
-  service_type: 'root canal assessment',
-  description: 'Persistent pain in a lower molar for three days.',
-  preferred_city: 'Lagos',
-  urgency: 'soon',
+/**
+ * An operating centre with opening hours. Default: open every day 00:00–23:30 Lagos time in 30-minute
+ * slots, so any whole or half hour from inHours() is bookable unless a test says otherwise.
+ */
+export async function makeCentre(
+  providerId: number,
+  o: {
+    name?: string;
+    city?: string;
+    state?: string;
+    hours?: { day_of_week: number; open: string; close: string; slot?: number }[];
+  } = {},
+) {
+  seq += 1;
+  const [r] = await pool.execute<Result>(
+    `INSERT INTO provider_centres(provider_id, name, address_line, city, state, postal_code)
+     VALUES (?, ?, ?, ?, ?, '100001')`,
+    [
+      providerId,
+      o.name ?? `Centre ${seq}`,
+      `${seq} Test Street`,
+      o.city ?? 'Lekki',
+      o.state ?? 'Lagos',
+    ],
+  );
+  const hours: { day_of_week: number; open: string; close: string; slot?: number }[] =
+    o.hours ??
+    [0, 1, 2, 3, 4, 5, 6].map((d) => ({ day_of_week: d, open: '00:00', close: '23:30' }));
+  for (const h of hours) {
+    await pool.execute(
+      `INSERT INTO provider_schedules(provider_id, centre_id, day_of_week, open_time, close_time, slot_duration_minutes)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [providerId, r.insertId, h.day_of_week, h.open, h.close, h.slot ?? 30],
+    );
+  }
+  return r.insertId;
+}
+
+/** A verified clinic with one centre and an owner. */
+export async function makeClinic(
+  o: { specialties?: string[]; city?: string; state?: string; verified?: boolean } = {},
+) {
+  const providerId = await makeProvider(o);
+  const centreId = await makeCentre(providerId, { city: o.city, state: o.state });
+  const owner = await makeStaff(providerId, 'owner');
+  return { providerId, centreId, owner };
+}
+
+export const bookingBody = (
+  centreId: number,
+  startsAt: string,
+  over: Record<string, unknown> = {},
+) => ({
+  centre_id: centreId,
+  starts_at: startsAt,
+  problem: 'toothache',
   has_emergency_symptoms: false,
   ...over,
 });
 
-export async function makeRequest(patient: TestUser, over: Record<string, unknown> = {}) {
-  const res = await api.post('/api/v1/requests').set(patient.auth).send(requestBody(over));
-  if (res.status !== 201)
-    throw new Error(`makeRequest failed: ${res.status} ${JSON.stringify(res.body)}`);
-  return res.body.data.id as number;
+/** Patient sends a booking request; returns the new appointment and visit (care request) ids. */
+export async function book(
+  patient: TestUser,
+  centreId: number,
+  startsAt: string,
+  over: Record<string, unknown> = {},
+) {
+  const res = await api
+    .post('/api/v1/appointments')
+    .set(patient.auth)
+    .send(bookingBody(centreId, startsAt, over));
+  if (res.status !== 201) throw new Error(`book failed: ${res.status} ${JSON.stringify(res.body)}`);
+  return { apptId: res.body.data.id as number, requestId: res.body.data.care_request_id as number };
+}
+
+/** A visit (care request) created by booking at a new clinic; returns its id. */
+export async function makeRequest(patient: TestUser, centreId?: number) {
+  const centre = centreId ?? (await makeClinic()).centreId;
+  return (await book(patient, centre, inHours(48))).requestId;
 }
 
 /**
- * Book an appointment on an accepted request and take it to `completed` — the point after which
- * clinical governance allows estimates, referrals and treatment planning (see VISIT_REQUIRED).
+ * Take the visit's booking through confirm → check-in → complete (the point after which estimates and
+ * referrals are allowed). Uses the request's pending appointment.
  */
 export async function completeVisit(
-  patient: TestUser,
+  _patient: TestUser,
   staff: TestUser,
   requestId: number,
-  providerId?: number,
+  _providerId?: number,
 ) {
-  const booked = await api
-    .post('/api/v1/appointments')
-    .set(patient.auth)
-    .send({
-      care_request_id: requestId,
-      ...(providerId !== undefined ? { provider_id: providerId } : {}),
-      starts_at: inHours(24),
-      ends_at: inHours(25),
-      appointment_type: 'assessment',
-    });
-  if (booked.status !== 201)
-    throw new Error(
-      `completeVisit booking failed: ${booked.status} ${JSON.stringify(booked.body)}`,
-    );
-  const id = booked.body.data.id as number;
+  const [rows] = await pool.query<Row[]>(
+    `SELECT id FROM appointments WHERE care_request_id = ? AND status = 'requested' ORDER BY id LIMIT 1`,
+    [requestId],
+  );
+  const id = rows[0]?.id as number | undefined;
+  if (!id) throw new Error('completeVisit: no requested appointment on this visit');
   for (const verb of ['confirm', 'check-in', 'complete']) {
     const r = await api.post(`/api/v1/appointments/${id}/${verb}`).set(staff.auth);
     if (r.status !== 200)
@@ -156,34 +219,12 @@ export async function completeVisit(
   return id;
 }
 
-/** Patient request → patient books appointment → staff confirms. Returns ids for booking tests. */
+/** A patient who has sent a booking request to a clinic (status `requested`). */
 export async function acceptedRequest() {
   const patient = await makeUser('patient');
-  const providerId = await makeProvider();
-  const staff = await makeStaff(providerId, 'owner');
-  const requestId = await makeRequest(patient);
-  const booked = await api
-    .post('/api/v1/appointments')
-    .set(patient.auth)
-    .send({
-      care_request_id: requestId,
-      provider_id: providerId,
-      starts_at: inHours(2),
-      ends_at: inHours(3),
-      appointment_type: 'assessment',
-    });
-  if (booked.status !== 201)
-    throw new Error(
-      `acceptedRequest booking failed: ${booked.status} ${JSON.stringify(booked.body)}`,
-    );
-  const apptId = booked.body.data.id as number;
-  // Transition to provider_accepted so the request is not treated as an open
-  // request (it has been accepted by the chosen provider).
-  await pool.execute('UPDATE care_requests SET status = ? WHERE id = ?', [
-    'provider_accepted',
-    requestId,
-  ]);
-  return { patient, providerId, staff, requestId, apptId };
+  const { providerId, centreId, owner: staff } = await makeClinic();
+  const { apptId, requestId } = await book(patient, centreId, inHours(2));
+  return { patient, providerId, centreId, staff, requestId, apptId };
 }
 
 export async function auditActions(entityType: string, entityId: number) {
