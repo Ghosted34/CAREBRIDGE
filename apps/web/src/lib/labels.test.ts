@@ -6,12 +6,14 @@ import {
   referralStatus,
   requestStatus,
   slaCategory,
-  slotStatus,
+  noteAuthors,
+  money,
 } from './labels';
 
 describe('labels and tones', () => {
   it('maps care request statuses to user-facing labels', () => {
-    expect(requestStatus.submitted.label).toBe('Submitted');
+    expect(requestStatus.provider_accepted.label).toBe('Open');
+    expect(requestStatus.completed.label).toBe('Closed');
     expect(requestStatus.completed.tone).toBe('green');
   });
 
@@ -38,14 +40,21 @@ describe('labels and tones', () => {
     expect(paymentStatus.failed.tone).toBe('red');
   });
 
-  it('maps capacity slot statuses', () => {
-    expect(slotStatus.available.tone).toBe('green');
-    expect(slotStatus.booked.label).toBe('Booked');
+  it('maps SLA categories to alert tones', () => {
+    expect(slaCategory.request_unconfirmed_breach.tone).toBe('red');
+    expect(slaCategory.request_unconfirmed_warning.tone).toBe('gold');
+    expect(slaCategory.notes_missing.tone).toBe('gold');
   });
 
-  it('maps SLA categories to alert tones', () => {
-    expect(slaCategory.unmatched_breach.tone).toBe('red');
-    expect(slaCategory.unmatched_warning.tone).toBe('gold');
-    expect(slaCategory.standard.tone).toBe('green');
+  it('only dentists and owners write prescriptions and referrals (mirrors the API)', () => {
+    expect(noteAuthors.prescription).toEqual(['owner', 'clinician']);
+    expect(noteAuthors.referral).not.toContain('scheduler');
+    expect(noteAuthors.follow_up).toContain('scheduler');
+    expect(noteAuthors.closing_consultancy).not.toContain('receptionist');
+  });
+
+  it('formats naira without kobo', () => {
+    expect(money(15000)).toMatch(/15,000/);
+    expect(money(15000)).not.toMatch(/\.00/);
   });
 });

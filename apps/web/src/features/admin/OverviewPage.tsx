@@ -43,13 +43,13 @@ export function OverviewPage() {
       <h2 className="section-title">Needs attention</h2>
       <div className="grid grid-3">
         <Card>
-          <h3>Unmatched requests</h3>
+          <h3>Open visits</h3>
           <p className="muted">
-            {m.open_care_requests} waiting for or reviewing offers. Match by hand if a request sits
-            too long.
+            {m.open_care_requests} visits not yet closed by a clinic. Unconfirmed bookings and
+            missing notes show under Needs attention.
           </p>
-          <Link className="btn btn-secondary btn-sm" to="/ops/queue">
-            Open queue
+          <Link className="btn btn-secondary btn-sm" to="/ops/sla">
+            Needs attention
           </Link>
         </Card>
         <Card>

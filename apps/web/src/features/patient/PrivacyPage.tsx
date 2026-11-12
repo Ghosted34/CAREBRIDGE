@@ -40,9 +40,9 @@ export function PrivacyPage() {
       />
       {withdrawn.length > 0 && (
         <Notice tone="warn">
-          Data sharing is off. {withdrawn.length} open request
-          {withdrawn.length > 1 ? 's were' : ' was'} withdrawn from providers. Journeys where you
-          already chose a provider continue.
+          Data sharing is off. {withdrawn.length} unconfirmed booking
+          {withdrawn.length > 1 ? 's were' : ' was'} withdrawn from clinics. Appointments a clinic
+          already confirmed continue.
         </Notice>
       )}
       <ErrorNote error={decide.error} />

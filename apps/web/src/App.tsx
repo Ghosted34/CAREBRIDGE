@@ -1,4 +1,4 @@
-import { Link, Route, Routes } from 'react-router';
+import { Link, Navigate, Route, Routes } from 'react-router';
 import { RequireRole } from './auth/RequireRole';
 import { Layout } from './components/Layout';
 import { EmptyState } from './components/ui';
@@ -10,17 +10,14 @@ import { SlaDashboardPage } from './features/admin/SlaDashboardPage';
 import { UsersPage } from './features/admin/UsersPage';
 import { LoginPage } from './features/auth/LoginPage';
 import { RegisterPage } from './features/auth/RegisterPage';
-import { NewRequestPage } from './features/patient/NewRequestPage';
+import { BookPage } from './features/patient/BookPage';
 import { PatientAppointmentsPage } from './features/patient/PatientAppointmentsPage';
 import { PatientHomePage } from './features/patient/PatientHomePage';
 import { PrivacyPage } from './features/patient/PrivacyPage';
 import { PoliciesPage } from './features/public/PoliciesPage';
 import { RequestDetailPage } from './features/patient/RequestDetailPage';
 import { CapacityPage } from './features/provider/CapacityPage';
-import { JourneysPage } from './features/provider/JourneysPage';
 import { ProviderAppointmentsPage } from './features/provider/ProviderAppointmentsPage';
-import { ProviderRequestsPage } from './features/provider/ProviderRequestsPage';
-import { ReferralsPage } from './features/provider/ReferralsPage';
 import { FeePage } from './features/provider/FeePage';
 import { TeamPage } from './features/provider/TeamPage';
 import { HomePage } from './features/public/HomePage';
@@ -60,21 +57,21 @@ export function App() {
         <Route path="register" element={<RegisterPage />} />
 
         <Route path="patient" element={patient(<PatientHomePage />)} />
-        <Route path="patient/new" element={patient(<NewRequestPage />)} />
+        <Route path="patient/new" element={patient(<BookPage />)} />
         <Route path="patient/requests/:id" element={patient(<RequestDetailPage />)} />
         <Route path="patient/appointments" element={patient(<PatientAppointmentsPage />)} />
 
-        <Route path="provider" element={provider(<ProviderRequestsPage />)} />
-        <Route path="provider/patients" element={provider(<JourneysPage />)} />
-        <Route path="provider/appointments" element={provider(<ProviderAppointmentsPage />)} />
+        <Route path="provider" element={provider(<ProviderAppointmentsPage />)} />
+        <Route path="provider/appointments" element={<Navigate to="/provider" replace />} />
+        <Route path="provider/patients" element={<Navigate to="/provider" replace />} />
+        <Route path="provider/referrals" element={<Navigate to="/provider" replace />} />
         <Route path="provider/capacity" element={provider(<CapacityPage />)} />
-        <Route path="provider/referrals" element={provider(<ReferralsPage />)} />
         <Route path="provider/team" element={provider(<TeamPage />)} />
         <Route path="provider/fees" element={provider(<FeePage />)} />
 
         <Route path="ops" element={ops(<OverviewPage />)} />
-        <Route path="ops/queue" element={ops(<ProviderRequestsPage />)} />
-        <Route path="ops/journeys" element={ops(<JourneysPage />)} />
+        <Route path="ops/queue" element={<Navigate to="/ops/sla" replace />} />
+        <Route path="ops/journeys" element={<Navigate to="/ops/sla" replace />} />
         <Route path="ops/sla" element={ops(<SlaDashboardPage />)} />
         <Route path="ops/audit-logs" element={ops(<AuditLogsPage />)} />
         <Route path="ops/providers" element={ops(<ProvidersAdminPage />)} />

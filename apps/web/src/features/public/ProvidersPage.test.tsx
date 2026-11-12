@@ -27,7 +27,7 @@ describe('ProvidersPage', () => {
     const cards = await screen.findAllByRole('heading', { level: 3 });
     expect(cards).toHaveLength(2);
     const link = within(cards[0]!.closest('.card')!).getByRole('link', {
-      name: 'Request care here',
+      name: 'Book here',
     });
     expect(link).toHaveAttribute('href', '/patient/new?providerId=3');
   });
@@ -37,6 +37,6 @@ describe('ProvidersPage', () => {
     expect(
       await screen.findByText('No verified providers for this specialty yet'),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Request care here' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Book here' })).not.toBeInTheDocument();
   });
 });

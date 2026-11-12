@@ -29,7 +29,6 @@ const referralBody = (receiving_provider_id: number) => ({
 describe('post-visit governance', () => {
   it('refuses a cost estimate before the patient has been seen, and allows it after', async () => {
     const { patient, staff, providerId, requestId } = await acceptedRequest();
-    await api.post(`/api/v1/requests/${requestId}/start-assessment`).set(staff.auth);
 
     const tooEarly = await api
       .post(`/api/v1/requests/${requestId}/estimates`)
@@ -56,7 +55,6 @@ describe('post-visit governance', () => {
   it('refuses a specialist referral before the patient has been seen, and allows it after', async () => {
     const { patient, staff, providerId, requestId } = await acceptedRequest();
     const specialistId = await makeProvider({ specialties: ['endodontics'] });
-    await api.post(`/api/v1/requests/${requestId}/start-assessment`).set(staff.auth);
 
     const tooEarly = await api
       .post(`/api/v1/requests/${requestId}/referrals`)

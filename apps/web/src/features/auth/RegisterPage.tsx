@@ -42,6 +42,7 @@ export function RegisterPage() {
     cac_number: '',
     tax_id: '',
     address: '',
+    city: '',
     specialties: 'dentistry',
   });
   const isClinic = form.role === 'provider_staff';
@@ -86,7 +87,7 @@ export function RegisterPage() {
               registration_number: clinic.registration_number,
               cac_number: clinic.cac_number,
               tax_id: clinic.tax_id,
-              city: 'Lagos',
+              city: clinic.city.trim(),
               address: clinic.address,
               // Comma separated in the field, snake_case array for the API (e.g. "Oral surgery").
               specialties: clinic.specialties
@@ -354,12 +355,19 @@ export function RegisterPage() {
                     onChange={(e) => setClinic((c) => ({ ...c, tax_id: e.target.value }))}
                   />
                 </Field>
-                <Field label="Address" className="span-2">
+                <Field label="Address">
                   <input
                     required
-                    placeholder="Street, area, Lagos"
+                    placeholder="Street, area"
                     value={clinic.address}
                     onChange={(e) => setClinic((c) => ({ ...c, address: e.target.value }))}
+                  />
+                </Field>
+                <Field label="City" hint="Head office city, e.g. Lagos or Abuja">
+                  <input
+                    required
+                    value={clinic.city}
+                    onChange={(e) => setClinic((c) => ({ ...c, city: e.target.value }))}
                   />
                 </Field>
                 <Field

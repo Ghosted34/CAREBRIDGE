@@ -11,6 +11,7 @@ import {
   ErrorNote,
   Field,
   Modal,
+  Notice,
   PageHeader,
   Pill,
   Spinner,
@@ -33,12 +34,13 @@ export function ProvidersAdminPage() {
       api.setVerification(id, status),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['admin'] }),
   });
+  const activated = verify.data?.data.activated_owners.length ?? 0;
 
   return (
     <>
       <PageHeader
         title="Providers"
-        subtitle="Verify facilities before they can appear publicly or receive patients."
+        subtitle="Verify facilities before they can appear publicly or receive patients. Verifying a clinic that signed itself up also activates its owner's account."
         actions={
           <>
             <Field label="Show">
@@ -59,6 +61,14 @@ export function ProvidersAdminPage() {
         }
       />
       <ErrorNote error={verify.error} />
+      {verify.isSuccess && verify.data.data.verification_status === 'verified' && (
+        <Notice tone="success">
+          Clinic verified.{' '}
+          {activated > 0
+            ? "Its owner's account is now active; they can sign in and add their centres."
+            : 'No owner account was waiting for approval.'}
+        </Notice>
+      )}
       {q.isPending ? (
         <Spinner />
       ) : q.isError ? (

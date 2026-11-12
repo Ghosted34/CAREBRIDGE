@@ -8,7 +8,8 @@ export const transitions = {
   care_request: {
     submitted: ['matching', 'provider_accepted', 'cancelled'],
     matching: ['provider_accepted', 'cancelled'],
-    provider_accepted: ['assessment', 'cancelled'],
+    // MVP: a visit is open from booking until the clinic writes a closing note (→ completed).
+    provider_accepted: ['assessment', 'completed', 'cancelled'],
     assessment: ['treatment_planned', 'completed', 'cancelled'],
     treatment_planned: ['in_progress', 'cancelled'],
     in_progress: ['completed', 'cancelled'],

@@ -4,11 +4,11 @@ import { POLICIES } from '../src/modules/consents/policies.js';
 import {
   acceptedRequest,
   api,
-  makeProvider,
-  makeRequest,
-  makeStaff,
+  book,
+  bookingBody,
+  inHours,
+  makeClinic,
   makeUser,
-  requestBody,
   resetDb,
 } from './helpers.js';
 
@@ -99,14 +99,18 @@ describe('consent endpoints', () => {
   });
 });
 
-describe('consent enforcement on care requests', () => {
+describe('consent enforcement on booking', () => {
   it('a patient without data-sharing consent is told exactly what is missing', async () => {
     const u = await makeUser('patient', 'active', { consents: false });
     await pool.execute(
       `INSERT INTO user_consents(user_id, consent_type, version, granted, source) VALUES (?, 'terms', ?, TRUE, 'registration'), (?, 'privacy', ?, TRUE, 'registration')`,
       [u.id, POLICIES.terms.version, u.id, POLICIES.privacy.version],
     );
-    const r = await api.post('/api/v1/requests').set(u.auth).send(requestBody());
+    const { centreId } = await makeClinic();
+    const r = await api
+      .post('/api/v1/appointments')
+      .set(u.auth)
+      .send(bookingBody(centreId, inHours(5)));
     expect(r.status).toBe(409);
     expect(r.body.error).toMatchObject({
       code: 'CONSENT_REQUIRED',
@@ -117,7 +121,14 @@ describe('consent enforcement on care requests', () => {
       .post('/api/v1/consents')
       .set(u.auth)
       .send({ consent_type: 'data_sharing', granted: true, source: 'request_form' });
-    expect((await api.post('/api/v1/requests').set(u.auth).send(requestBody())).status).toBe(201);
+    expect(
+      (
+        await api
+          .post('/api/v1/appointments')
+          .set(u.auth)
+          .send(bookingBody(centreId, inHours(5)))
+      ).status,
+    ).toBe(201);
   });
 
   it('an outdated policy version blocks new requests until re-accepted', async () => {
@@ -126,30 +137,40 @@ describe('consent enforcement on care requests', () => {
       `UPDATE user_consents SET version = 'old' WHERE user_id = ? AND consent_type = 'privacy'`,
       [u.id],
     );
-    const r = await api.post('/api/v1/requests').set(u.auth).send(requestBody());
+    const { centreId } = await makeClinic();
+    const r = await api
+      .post('/api/v1/appointments')
+      .set(u.auth)
+      .send(bookingBody(centreId, inHours(5)));
     expect(r.body.error.details.missing).toEqual(['privacy']);
   });
 
-  it('revoking data sharing withdraws open requests but keeps journeys with a chosen provider', async () => {
-    const { patient, requestId: assigned } = await acceptedRequest();
-    const open = await makeRequest(patient);
-    const staff = await makeStaff(await makeProvider());
-    const before = await api.get('/api/v1/requests/queue').set(staff.auth);
-    expect(before.body.data.map((x: { id: number }) => x.id)).toContain(open);
+  it('revoking data sharing withdraws unconfirmed booking requests; confirmed ones go ahead', async () => {
+    const { patient, staff, requestId: confirmedVisit, apptId } = await acceptedRequest();
+    await api.post(`/api/v1/appointments/${apptId}/confirm`).set(staff.auth);
+    const other = await makeClinic();
+    const { requestId: pendingVisit } = await book(patient, other.centreId, inHours(8));
 
     const r = await api
       .post('/api/v1/consents')
       .set(patient.auth)
       .send({ consent_type: 'data_sharing', granted: false });
     expect(r.status).toBe(200);
-    expect(r.body.data.withdrawn_requests).toEqual([open]);
+    expect(r.body.data.withdrawn_requests).toEqual([pendingVisit]);
 
-    const [rows] = await pool.query<Row[]>('SELECT id, status FROM care_requests ORDER BY id');
-    expect(rows).toEqual([
-      { id: assigned, status: 'provider_accepted' },
-      { id: open, status: 'cancelled' },
+    const [visits] = await pool.query<Row[]>('SELECT id, status FROM care_requests ORDER BY id');
+    expect(visits).toEqual([
+      { id: confirmedVisit, status: 'provider_accepted' },
+      { id: pendingVisit, status: 'cancelled' },
     ]);
-    expect((await api.get('/api/v1/requests/queue').set(staff.auth)).body.data).toEqual([]);
+    const [appts] = await pool.query<Row[]>('SELECT status FROM appointments ORDER BY id');
+    expect(appts.map((a) => a.status)).toEqual(['confirmed', 'cancelled']);
+    // and a new booking now needs consent again
+    const again = await api
+      .post('/api/v1/appointments')
+      .set(patient.auth)
+      .send(bookingBody(other.centreId, inHours(9)));
+    expect(again.body.error.code).toBe('CONSENT_REQUIRED');
     const history = await consentRows(patient.id);
     expect(
       history

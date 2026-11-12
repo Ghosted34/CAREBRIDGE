@@ -96,30 +96,6 @@ export interface CareRequest {
   updated_at: string;
 }
 
-export interface QueueItem {
-  id: number;
-  specialty: string;
-  service_type: string;
-  description: string;
-  preferred_city: string;
-  urgency: Urgency;
-  status: RequestStatus;
-  created_at: string;
-}
-
-export interface AssignedRequest extends QueueItem {
-  assigned_provider_id: number;
-  assigned_provider: string;
-  patient_name: string;
-  patient_phone: string;
-  updated_at: string;
-  /**
-   * Appointments for this request where the patient was seen (`checked_in`/`completed`).
-   * Clinical governance: estimates, referrals and treatment planning need at least one.
-   */
-  assessments_completed: number;
-}
-
 export interface Appointment {
   id: number;
   care_request_id: number;
@@ -128,6 +104,10 @@ export interface Appointment {
   provider_id: number;
   provider: string;
   centre_id: number | null;
+  centre_name: string | null;
+  centre_address: string | null;
+  caregiver_id: number | null;
+  caregiver_name: string | null;
   appointment_type: AppointmentType;
   appointment_mode: AppointmentMode;
   starts_at: string;
@@ -237,8 +217,6 @@ export interface AppNotification {
   created_at: string;
 }
 
-export type SlotStatus = 'available' | 'held' | 'booked' | 'cancelled';
-
 export interface ProviderSchedule {
   id: number;
   provider_id: number;
@@ -248,19 +226,6 @@ export interface ProviderSchedule {
   close_time: string;
   slot_duration_minutes: number;
   is_active: number | boolean;
-}
-
-export interface ProviderSlot {
-  id: number;
-  provider_id: number;
-  centre_id: number;
-  start_time: string;
-  end_time: string;
-  status: SlotStatus;
-  price: number | null;
-  currency: string | null;
-  appointment_id: number | null;
-  created_at: string;
 }
 
 export type ReferralStatus = 'draft' | 'sent' | 'accepted' | 'declined' | 'completed' | 'cancelled';
@@ -334,47 +299,6 @@ export interface PaymentInitResult {
   access_code: string;
 }
 
-export interface MatchScore {
-  total: number;
-  tier: 'excellent' | 'good' | 'fair';
-  breakdown: {
-    clinical_fit: number;
-    verification: number;
-    location_fit: number;
-    availability: number;
-    performance: number;
-  };
-}
-
-export interface MatchingProvider {
-  provider_id: number;
-  display_name: string;
-  city: string;
-  address: string;
-  specialties: string[];
-  score: MatchScore;
-}
-
-export interface StuckRequest {
-  id: number;
-  patient_user_id: number;
-  patient_name: string;
-  patient_email: string;
-  category: string;
-  urgency: Urgency;
-  status: RequestStatus;
-  city: string;
-  assigned_provider_id: number | null;
-  assigned_provider: string | null;
-  created_at: string;
-  updated_at: string;
-  age_minutes: number;
-  offers_count: number;
-  appointments_count: number;
-  sla_category:
-    'unmatched_breach' | 'unmatched_warning' | 'unbooked_delay' | 'clinical_stalled' | 'standard';
-}
-
 export interface AuditLog {
   id: number;
   actor_user_id: number | null;
@@ -440,4 +364,86 @@ export interface PatientKYC {
 export interface ProviderKYC {
   cac_number: string;
   tax_id: string;
+}
+
+// ---------- search & booking (the MVP flow) ----------
+
+export interface Problem {
+  key: string;
+  label: string;
+}
+export type TimeOfDay = 'any' | 'morning' | 'afternoon' | 'evening';
+/** One "I'm free…" period: Lagos dates (YYYY-MM-DD) and a part of the day. */
+export interface SearchPeriod {
+  from_date: string;
+  to_date: string;
+  time_of_day: TimeOfDay;
+}
+export interface FreeTime {
+  starts_at: string;
+  ends_at: string;
+}
+/** How close a centre is to where the patient is searching. */
+export type AreaMatch = 'same_area' | 'same_state' | 'elsewhere';
+export interface SearchResult {
+  centre_id: number;
+  centre_name: string;
+  address_line: string;
+  city: string;
+  state: string;
+  phone: string | null;
+  provider_id: number;
+  provider_name: string;
+  match: AreaMatch;
+  consultation_fee: { amount: number; currency: string } | null;
+  caregivers: { id: number; full_name: string; role: Caregiver['role'] }[];
+  /** Total free times found; `free_times` holds the first 60. */
+  free_count: number;
+  free_times: FreeTime[];
+}
+export interface SearchResponse {
+  near: { city: string | null; state: string | null };
+  problem: Problem;
+  results: SearchResult[];
+}
+export interface BookingResult {
+  id: number;
+  care_request_id: number;
+  provider_id: number;
+  centre_id: number;
+  starts_at: string;
+  ends_at: string;
+  status: AppointmentStatus;
+}
+
+export type NoteType = 'follow_up' | 'referral' | 'prescription' | 'closing_consultancy';
+export interface AppointmentNote {
+  id: number;
+  appointment_id: number;
+  author_user_id: number;
+  author_name: string;
+  note_type: NoteType;
+  summary: string;
+  created_at: string;
+}
+
+export type SlaCategory =
+  | 'request_unconfirmed_warning'
+  | 'request_unconfirmed_breach'
+  | 'visit_not_recorded'
+  | 'notes_missing';
+/** An appointment that needs attention (GET /admin/stuck-requests). `id` is the visit id. */
+export interface StuckRequest {
+  appointment_id: number;
+  id: number;
+  patient_user_id: number;
+  patient_name: string;
+  status: AppointmentStatus;
+  starts_at: string;
+  assigned_provider: string;
+  assigned_provider_id: number;
+  centre_name: string | null;
+  created_at: string;
+  age_minutes: number;
+  sla_category: SlaCategory;
 }

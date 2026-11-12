@@ -68,9 +68,9 @@ export function ProvidersPage() {
                 {!p.accepting_referrals && <Pill tone="grey">Not taking new patients</Pill>}
               </div>
               <div className="btn-row" style={{ marginTop: 12 }}>
-                {/* Goes straight to this clinic: the request is routed to them, not to the open queue. */}
+                {/* Opens booking with results narrowed to this clinic. */}
                 <Link to={`/patient/new?providerId=${p.id}`} className="btn btn-primary btn-sm">
-                  Request care here
+                  Book here
                 </Link>
               </div>
             </div>

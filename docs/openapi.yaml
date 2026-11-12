@@ -1,172 +1,254 @@
+# Generated from the spec the API serves at /api/v1/openapi.json (apps/api/src/modules/docs/docs.routes.ts).
+# Edit docs.routes.ts, not this file. Full endpoint reference: docs/api.md.
 openapi: 3.1.0
 info:
-  title: CareBridge API
+  title: CareLynk API
   version: 0.2.0
-  description: >-
-    Coordinated access to verified healthcare capacity in Lagos (dental pilot).
-    Manages care requests, clinic offers, appointment slots, clinical referrals,
-    cost estimates, clinical documents, and Paystack payments.
+  description: Find a verified dental clinic near you with free time when you are free, send a booking request,
+    and keep the visit record (check-in and post-visit notes). Lagos pilot.
 servers:
-  - url: /api/v1
-    description: API v1
-paths:
-  /health:
-    get:
-      summary: Health check
-      responses:
-        '200':
-          description: API is operational
-  /auth/register:
-    post:
-      summary: Register account (patient or provider staff, optionally with clinic details)
-      responses:
-        '201':
-          description: Account created (clinic sign-ups start pending verification)
-        '409':
-          description: Email, phone or registration number already registered
-  /providers/{id}/team:
-    get:
-      summary: List a clinic's team members
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Members with role and account status
-    post:
-      summary: Add or re-role a team member (clinic owner, verified facility)
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Member added
-        '409':
-          description: PROVIDER_NOT_VERIFIED, NOT_PROVIDER_STAFF, ACCOUNT_SUSPENDED or SELF_CHANGE
-  /providers/{id}/team/{userId}:
-    delete:
-      summary: Remove a team member (clinic owner, verified facility)
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Member removed
-        '409':
-          description: OWNER_CHANGE_FORBIDDEN or SELF_CHANGE
-  /staff-accounts:
-    get:
-      summary: Search provider-staff accounts a clinic owner may invite
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Matching staff accounts (id, name, email, status)
-  /auth/login:
-    post:
-      summary: Authenticate and receive JWT
-      responses:
-        '200':
-          description: Sign in successful
-  /requests:
-    post:
-      summary: Submit a care request (optionally directed at one clinic)
-      security:
-        - bearerAuth: []
-      responses:
-        '201':
-          description: Care request created, or accepted by the chosen clinic
-        '404':
-          description: Chosen clinic cannot take this request; nothing stored
-        '422':
-          description: Emergency redirect guidance
-  /requests/{id}/matches:
-    get:
-      summary: Intelligent matching score breakdown
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Ranked matching providers
-  /providers/{id}/slots:
-    get:
-      summary: List available capacity slots
-      responses:
-        '200':
-          description: Slots list
-    post:
-      summary: Create slot
-      security:
-        - bearerAuth: []
-      responses:
-        '201':
-          description: Slot created
-  /requests/{id}/referrals:
-    post:
-      summary: Create specialist referral (after the patient has been seen)
-      security:
-        - bearerAuth: []
-      responses:
-        '201':
-          description: Referral sent
-        '409':
-          description: VISIT_REQUIRED
-    get:
-      summary: List referrals for request
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Referral records
-  /requests/{id}/estimates:
-    post:
-      summary: Issue cost estimate (after the patient has been seen)
-      security:
-        - bearerAuth: []
-      responses:
-        '201':
-          description: Estimate issued
-        '409':
-          description: VISIT_REQUIRED
-    get:
-      summary: List estimates for request
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Estimate records
-  /requests/{id}/documents/upload-url:
-    post:
-      summary: Generate pre-signed upload URL for clinical photo/X-ray
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Pre-signed upload parameters
-  /requests/{id}/payments/initialize:
-    post:
-      summary: Initialize payment via Paystack or mock gateway
-      security:
-        - bearerAuth: []
-      responses:
-        '201':
-          description: Checkout authorization URL
-  /admin/stuck-requests:
-    get:
-      summary: Operator SLA monitoring dashboard
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Breached and warning requests
-  /admin/audit-logs:
-    get:
-      summary: Audit log inspection
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Audit log stream
+- url: /api/v1
+  description: API v1
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+          required:
+          - code
+          - message
+      required:
+      - error
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: API is running
+  /auth/register:
+    post:
+      summary: Register a patient or provider staff account; provider staff may include `clinic` details to self-onboard
+        a pending facility
+      responses:
+        '201':
+          description: User created (clinic sign-ups are pending verification)
+        '400':
+          description: Facility details sent by a patient
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Email, phone or registration number already registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /providers/{id}/team:
+    get:
+      summary: List the members of a clinic (any member, operator, admin)
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Team members with roles and account status
+    post:
+      summary: Add or re-role a team member (clinic owner of a verified facility)
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Member added, activated if they were pending
+        '409':
+          description: Facility not verified, wrong role, suspended or self
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /providers/{id}/team/{userId}:
+    delete:
+      summary: Remove a team member (clinic owner of a verified facility)
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Member removed
+        '409':
+          description: Owner membership, or removing yourself
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /staff-accounts:
+    get:
+      summary: Search provider-staff accounts a clinic owner may invite (contact details only)
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Matching staff accounts
+  /auth/login:
+    post:
+      summary: Sign in with email and password
+      responses:
+        '200':
+          description: JWT token returned
+  /problems:
+    get:
+      summary: Problems a patient can choose from (public)
+      responses:
+        '200':
+          description: List of { key, label }
+  /search:
+    post:
+      summary: Find clinics for a problem near the patient with free times in their date periods
+      description: 'Body: { problem, periods: [{ from_date, to_date, time_of_day: any|morning|afternoon|evening
+        }] (1–5, ≤31 days, ≤60 days ahead), city?, state? }. Ranked by area (same city/area, same state, elsewhere)
+        then earliest free time. Centres with no free time are omitted.'
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: '{ near, problem, results: [centre with free_times, fee, caregivers] }'
+  /centres/{centreId}/availability:
+    get:
+      summary: Free times at one centre (from_date, to_date, time_of_day)
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: '{ centre_id, free_times }'
+  /appointments:
+    post:
+      summary: Send a booking request for a free time at a centre
+      description: 'New visit: { centre_id, starts_at, problem, has_emergency_symptoms, details?, appointment_mode?,
+        caregiver_id? }. Follow-up: { centre_id, starts_at, care_request_id }. The time must be free (opening hours,
+        slot grid, one appointment per centre at a time); the end time is set by the server. Creates a `requested`
+        appointment.'
+      security:
+      - bearerAuth: []
+      responses:
+        '201':
+          description: Requested appointment
+        '409':
+          description: SLOT_UNAVAILABLE, NOT_A_MATCH, CONSENT_REQUIRED, …
+        '422':
+          description: EMERGENCY_REDIRECT
+  /appointments/{id}/{action}:
+    post:
+      summary: 'Clinic action: confirm | decline | check-in | complete | no-show (patients: cancel)'
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: New status
+        '409':
+          description: INVALID_TRANSITION
+  /appointments/{id}/notes:
+    get:
+      summary: Visit notes — the patient and the clinic only
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Notes
+        '404':
+          description: Not yours
+    post:
+      summary: 'Add a post-visit note after check-in (prescription/referral: dentists & owners)'
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Created
+        '409':
+          description: VISIT_NOT_STARTED
+  /requests/{id}/referrals:
+    post:
+      summary: Create a clinician-to-clinician referral (needs a completed or checked-in visit)
+      security:
+      - bearerAuth: []
+      responses:
+        '201':
+          description: Referral sent
+        '409':
+          description: 'VISIT_REQUIRED: the patient has not been seen yet'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      summary: List referrals for a request
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Referrals list
+  /requests/{id}/estimates:
+    post:
+      summary: Issue a cost estimate for treatment (needs a completed or checked-in visit)
+      security:
+      - bearerAuth: []
+      responses:
+        '201':
+          description: Estimate issued
+        '409':
+          description: 'VISIT_REQUIRED: the patient has not been seen yet'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      summary: List cost estimates for a request
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Estimates list
+  /requests/{id}/documents/upload-url:
+    post:
+      summary: Request pre-signed upload URL for clinical document (photo, X-ray)
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Signed upload URL and storage key
+  /requests/{id}/payments/initialize:
+    post:
+      summary: Initialize payment (deposit/consultation fee) via Paystack or mock gateway
+      security:
+      - bearerAuth: []
+      responses:
+        '201':
+          description: Payment reference and authorization URL
+  /admin/stuck-requests:
+    get:
+      summary: 'SLA monitoring: list stuck care requests'
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Stuck requests with SLA status
+  /admin/audit-logs:
+    get:
+      summary: Audit log viewer with actor, action, and entity filters
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Paginated audit logs

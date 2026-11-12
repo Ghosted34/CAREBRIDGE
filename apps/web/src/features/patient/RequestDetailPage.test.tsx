@@ -1,117 +1,88 @@
 import { screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import type { Appointment, CareRequest } from '../../api/types';
-import { formatTimeRange } from '../../lib/time';
-import { mockApi, patientUser, renderApp } from '../../test/utils';
+import { appointmentFixture, DAY, isoIn, listOf, visitFixture } from '../../test/fixtures';
+import { callsTo, mockApi, patientUser, renderApp } from '../../test/utils';
 import { RequestDetailPage } from './RequestDetailPage';
 
-const day = 86_400_000;
-const iso = (offsetMs: number) => new Date(Date.now() + offsetMs).toISOString();
-
-const request: CareRequest = {
-  id: 12,
-  patient_user_id: 1,
-  specialty: 'dentistry',
-  service_type: 'Root canal assessment',
-  description: 'Persistent pain in a lower molar for three days.',
-  preferred_city: 'Lagos',
-  urgency: 'soon',
-  status: 'provider_accepted',
-  assigned_provider_id: 3,
-  assigned_provider: 'Ikeja Dental',
-  created_at: iso(-2 * day),
-  updated_at: iso(-day),
-};
-
-const appointment = (over: Partial<Appointment>): Appointment => ({
-  id: 30,
-  care_request_id: 12,
-  patient_user_id: 1,
-  patient_name: 'Ada Patient',
-  provider_id: 3,
-  provider: 'Ikeja Dental',
-  appointment_type: 'assessment',
-  starts_at: iso(day),
-  ends_at: iso(day + 45 * 60_000),
-  status: 'booked',
-  centre_id: null,
-  appointment_mode: 'physical',
-  created_at: iso(-day),
-  ...over,
-});
-
-const mock = (appointments: Appointment[]) =>
+const mock = (appointments: Appointment[], visit: CareRequest = visitFixture()) =>
   mockApi({
-    'GET /requests/12': { body: { data: request } },
-    'GET /appointments/mine': {
-      body: { data: appointments, meta: { limit: 50, offset: 0, count: appointments.length } },
+    'GET /requests/12': { body: { data: visit } },
+    'GET /appointments/mine': { body: listOf(appointments) },
+    'GET /appointments/29/notes': {
+      body: listOf([
+        {
+          id: 1,
+          appointment_id: 29,
+          author_user_id: 9,
+          author_name: 'Dr Tunde',
+          note_type: 'prescription',
+          summary: 'Amoxicillin 500mg three times a day for 5 days',
+          created_at: isoIn(-DAY),
+        },
+      ]),
     },
-    'GET /requests/12/estimates': { body: { data: [] } },
-    'GET /requests/12/documents': { body: { data: [] } },
-    'GET /requests/12/payments': { body: { data: [] } },
-    'GET /requests/12/matches': { body: { data: [] } },
-    'GET /providers/3/centres': { body: { data: [] } },
-    'GET /providers/3/caregivers': { body: { data: [] } },
+    'POST /appointments/30/cancel': { body: { data: { id: 30, status: 'cancelled' } } },
   });
 
-const render = () =>
+const render = (route = '/patient/requests/12') =>
   renderApp(<RequestDetailPage />, {
-    route: '/patient/requests/12',
+    route,
     path: '/patient/requests/:id',
     auth: { user: patientUser },
   });
 
-describe('RequestDetailPage booking', () => {
-  it('offers the booking form while no appointment is live', async () => {
-    mock([]);
-    render();
-    expect(await screen.findByRole('heading', { name: 'Book your visit' })).toBeInTheDocument();
-    // Date is required before "Find clinics" is enabled.
-    const dateInput = screen.getByLabelText(/Preferred date/i);
-    expect(dateInput).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Find clinics' })).toBeDisabled();
-    expect(screen.queryByRole('heading', { name: 'Upcoming appointment' })).not.toBeInTheDocument();
+describe('Visit page', () => {
+  it('lists the visit’s appointments with where, how and status', async () => {
+    mock([appointmentFixture({ appointment_mode: 'remote', caregiver_name: 'Dr Tunde' })]);
+    render('/patient/requests/12?booked=1');
+    expect(await screen.findByRole('heading', { name: 'Toothache or pain' })).toBeInTheDocument();
+    expect(screen.getByText(/Booking request sent/)).toBeInTheDocument();
+    expect(await screen.findByText('Awaiting clinic')).toBeInTheDocument();
+    expect(screen.getByText('Video / voice call')).toBeInTheDocument();
+    expect(screen.getByText('with Dr Tunde')).toBeInTheDocument();
+    expect(screen.getByText('Lower molar hurts when I drink cold water.')).toBeInTheDocument();
   });
 
-  it('shows the upcoming appointment instead of the booking form', async () => {
-    const upcoming = appointment({ status: 'confirmed' });
-    mock([upcoming]);
-    render();
-    const heading = await screen.findByRole('heading', { name: 'Upcoming appointment' });
-    expect(screen.queryByRole('heading', { name: 'Book an appointment' })).not.toBeInTheDocument();
-    // Scoped to the summary card: the Appointments list below repeats the same visit.
-    const card = within(heading.closest('section')!);
-    expect(
-      card.getByText(formatTimeRange(upcoming.starts_at, upcoming.ends_at)),
-    ).toBeInTheDocument();
-    expect(card.getByText('Assessment')).toBeInTheDocument();
-    expect(card.getByText('Confirmed')).toBeInTheDocument();
-    expect(card.getByText(/book another visit once this one is over/i)).toBeInTheDocument();
-  });
-
-  it('lets the patient book again once the visit is over or cancelled', async () => {
+  it('shows the clinic’s notes once the patient was seen', async () => {
     mock([
-      appointment({ id: 29, status: 'completed', starts_at: iso(-2 * day), ends_at: iso(-day) }),
-      appointment({ id: 31, status: 'cancelled', starts_at: iso(day), ends_at: iso(day + day) }),
+      appointmentFixture({
+        id: 29,
+        status: 'completed',
+        starts_at: isoIn(-2 * DAY),
+        ends_at: isoIn(-2 * DAY + 1_800_000),
+      }),
     ]);
     render();
-    expect(await screen.findByRole('heading', { name: 'Book your visit' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Upcoming appointment' })).not.toBeInTheDocument();
+    expect(await screen.findByText(/Amoxicillin 500mg/)).toBeInTheDocument();
+    expect(screen.getByText('Prescription')).toBeInTheDocument();
   });
 
-  it('still hides booking when the request is not bookable at all', async () => {
-    mockApi({
-      'GET /requests/12': { body: { data: { ...request, status: 'submitted' } } },
-      'GET /appointments/mine': {
-        body: { data: [], meta: { limit: 50, offset: 0, count: 0 } },
-      },
-      'GET /requests/12/estimates': { body: { data: [] } },
-      'GET /requests/12/documents': { body: { data: [] } },
-      'GET /requests/12/payments': { body: { data: [] } },
-      'GET /requests/12/matches': { body: { data: [] } },
-    });
+  it('lets the patient cancel a pending booking', async () => {
+    const fetch = mock([appointmentFixture()]);
     render();
-    expect(await screen.findByRole('heading', { name: 'Matching clinics' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Book an appointment' })).not.toBeInTheDocument();
+    const item = (await screen.findByText('Awaiting clinic')).closest('li')!;
+    await userEvent.click(within(item).getByRole('button', { name: 'Cancel' }));
+    expect(callsTo(fetch, 'POST /appointments/30/cancel')).toHaveLength(1);
+  });
+
+  it('offers no follow-up booking on a closed visit', async () => {
+    mock(
+      [
+        appointmentFixture({
+          id: 29,
+          status: 'completed',
+          starts_at: isoIn(-2 * DAY),
+          ends_at: isoIn(-DAY),
+        }),
+      ],
+      visitFixture({ status: 'completed' }),
+    );
+    render();
+    expect(await screen.findByText('Closed')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Book another appointment/ }),
+    ).not.toBeInTheDocument();
   });
 });

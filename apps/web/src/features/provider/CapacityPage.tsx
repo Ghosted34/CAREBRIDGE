@@ -1,498 +1,443 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { api } from '../../api/endpoints';
-import type { Centre } from '../../api/types';
-import { Button, Card, EmptyState, ErrorNote, Field, Modal, Pill } from '../../components/ui';
-import { formatDateTime, toLagosLocal } from '../../lib/time';
-import { slotStatus } from '../../lib/labels';
+import type { Caregiver, Centre, ProviderSchedule } from '../../api/types';
+import { useAuth } from '../../auth/authContext';
+import {
+  Button,
+  Card,
+  EmptyState,
+  ErrorNote,
+  Field,
+  Modal,
+  Notice,
+  PageHeader,
+  Pill,
+  Spinner,
+} from '../../components/ui';
+import { titleCase } from '../../lib/labels';
 import { useActiveClinic } from './activeClinic';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const SLOT_LENGTHS = [15, 20, 30, 45, 60, 90];
 
-type DayScheduleInput = {
+interface DayHours {
   day_of_week: number;
+  open: boolean;
   open_time: string;
   close_time: string;
   slot_duration_minutes: number;
-  is_active: boolean;
-};
+}
 
+const hhmm = (t: string) => t.slice(0, 5);
+
+/** Seven rows from the saved hours; days with no row are closed. */
+function toDays(saved: ProviderSchedule[]): DayHours[] {
+  return DAYS.map((_, d) => {
+    const s = saved.find((x) => x.day_of_week === d);
+    return {
+      day_of_week: d,
+      open: Boolean(s && s.is_active),
+      open_time: s ? hhmm(s.open_time) : '09:00',
+      close_time: s ? hhmm(s.close_time) : '17:00',
+      slot_duration_minutes: s?.slot_duration_minutes ?? 30,
+    };
+  });
+}
+
+/**
+ * Operating centres, their opening hours and their dentists. Patients' free times are worked out
+ * from the opening hours and existing bookings — there are no slots to generate.
+ */
 export function CapacityPage() {
-  const queryClient = useQueryClient();
-  // Capacity follows the clinic picked in the topbar switcher.
+  const { user } = useAuth();
   const { clinicId } = useActiveClinic();
-  const [generateOpen, setGenerateOpen] = useState(false);
-  const [editOpen, setEditOpen] = useState(false);
-  const [startDate, setStartDate] = useState(() => toLagosLocal(new Date()).slice(0, 10));
-  const [endDate, setEndDate] = useState(() =>
-    toLagosLocal(new Date(Date.now() + 14 * 86_400_000)).slice(0, 10),
-  );
+  const isOwner =
+    user?.memberships.find((m) => m.provider_id === clinicId)?.provider_role === 'owner';
+  const [selected, setSelected] = useState<number | null>(null);
+  const [adding, setAdding] = useState(false);
 
-  const activeId = clinicId;
-  const [selectedCentreId, setSelectedCentreId] = useState<number | null>(null);
-  const [addCentreOpen, setAddCentreOpen] = useState(false);
-  const [centreName, setCentreName] = useState('');
-  const [centreAddress, setCentreAddress] = useState('');
-  const [centreCity, setCentreCity] = useState('');
-  const [centreState, setCentreState] = useState('');
-  const [centrePostalCode, setCentrePostalCode] = useState('');
-  const [centrePhone, setCentrePhone] = useState('');
-
-  const { data: centresData } = useQuery({
-    queryKey: ['centres', activeId],
-    queryFn: () => (activeId ? api.centres(activeId) : null),
-    enabled: Boolean(activeId),
+  const centres = useQuery({
+    queryKey: ['centres', clinicId],
+    queryFn: () => api.centres(clinicId!),
+    enabled: Boolean(clinicId),
   });
+  const list = centres.data?.data ?? [];
+  const centre = list.find((c) => c.id === selected) ?? list[0];
 
-  const centres = centresData?.data ?? [];
-
-  const { data: schedulesData, isLoading: schedulesLoading } = useQuery({
-    queryKey: ['schedules', activeId, selectedCentreId],
-    queryFn: () =>
-      activeId && selectedCentreId
-        ? api.providerSchedulesByCentre(activeId, selectedCentreId)
-        : null,
-    enabled: Boolean(activeId) && Boolean(selectedCentreId),
-  });
-
-  const { data: slotsData, isLoading: slotsLoading } = useQuery({
-    queryKey: ['slots', activeId],
-    queryFn: () => (activeId ? api.providerSlots(activeId) : null),
-    enabled: Boolean(activeId),
-  });
-
-  const generate = useMutation({
-    mutationFn: () =>
-      api.generateSlots(activeId!, selectedCentreId!, {
-        start_date: startDate,
-        end_date: endDate,
-      }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['slots', activeId] });
-      setGenerateOpen(false);
-    },
-  });
-
-  const setSchedules = useMutation({
-    mutationFn: () => api.setProviderSchedules(activeId!, selectedCentreId!, daySchedules),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['schedules', activeId] });
-      setEditOpen(false);
-    },
-  });
-
-  const createCentre = useMutation({
-    mutationFn: () =>
-      api.createCentre(activeId!, {
-        name: centreName,
-        address_line: centreAddress,
-        city: centreCity,
-        state: centreState,
-        postal_code: centrePostalCode,
-        phone: centrePhone || undefined,
-      }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['centres', activeId] });
-      setAddCentreOpen(false);
-      setCentreName('');
-      setCentreAddress('');
-      setCentreCity('');
-      setCentreState('');
-      setCentrePostalCode('');
-      setCentrePhone('');
-    },
-  });
-
-  const cancelSlot = useMutation({
-    mutationFn: (id: number) => api.cancelSlot(id),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['slots', activeId] });
-    },
-  });
-
-  const schedules = useMemo(() => schedulesData?.data ?? [], [schedulesData]);
-  const slots = slotsData?.data ?? [];
-
-  // Base schedules fetched from the API, keyed by day_of_week.
-  const baseSchedules = useMemo(
-    () =>
-      DAYS.map((_, dayIndex): DayScheduleInput => {
-        const existing = schedules.find((s) => s.day_of_week === dayIndex);
-        return {
-          day_of_week: dayIndex,
-          open_time: existing?.open_time ?? '09:00',
-          close_time: existing?.close_time ?? '17:00',
-          slot_duration_minutes: existing?.slot_duration_minutes ?? 30,
-          is_active: Boolean(existing?.is_active ?? true),
-        };
-      }),
-    [schedules],
-  );
-
-  // User edits layered on top of the base schedules.
-  const [edits, setEdits] = useState<Map<number, Partial<DayScheduleInput>>>(new Map());
-
-  const daySchedules = baseSchedules.map((s) => ({
-    ...s,
-    ...edits.get(s.day_of_week),
-  }));
-
-  const updateDay = (dayOfWeek: number, key: string, value: string | number | boolean) => {
-    setEdits((prev) => {
-      const next = new Map(prev);
-      const current = next.get(dayOfWeek) ?? {};
-      next.set(dayOfWeek, { ...current, [key]: value });
-      return next;
-    });
-  };
+  if (!clinicId) return <EmptyState title="No verified clinic yet" />;
 
   return (
-    <div className="stack gap-4">
-      <div className="section-head">
-        <div>
-          <h2>Clinic Capacity & Slots</h2>
-          <p className="hint">Manage operating hours and real bookable appointment capacity.</p>
-        </div>
-        <div className="cluster gap-2">
-          {centres.length > 0 ? (
-            <Field label="Centre">
-              <select
-                required
-                value={selectedCentreId == null ? '' : String(selectedCentreId)}
-                onChange={(e) => setSelectedCentreId(Number(e.target.value) || null)}
+    <>
+      <PageHeader
+        title="Centres & hours"
+        subtitle="Patients see free times worked out from your opening hours and existing bookings."
+        actions={isOwner && <Button onClick={() => setAdding(true)}>Add centre</Button>}
+      />
+      {centres.isPending ? (
+        <Spinner />
+      ) : centres.isError ? (
+        <ErrorNote error={centres.error} />
+      ) : list.length === 0 ? (
+        <EmptyState title="No centres yet">
+          {isOwner
+            ? 'Add your first centre so patients can book.'
+            : 'The clinic owner adds centres.'}
+        </EmptyState>
+      ) : (
+        <>
+          <div className="tabs" role="group" aria-label="Centres">
+            {list.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                className="tab"
+                aria-pressed={centre?.id === c.id}
+                onClick={() => setSelected(c.id)}
               >
-                <option value="">Select a centre…</option>
-                {centres.map((c: Centre) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          ) : null}
-          {centres.length > 0 ? (
-            <Button onClick={() => setAddCentreOpen(true)}>Add centre</Button>
-          ) : null}
-          <Button onClick={() => setEditOpen(true)} disabled={!selectedCentreId}>
-            Edit hours
-          </Button>
-          <Button onClick={() => setGenerateOpen(true)} disabled={!selectedCentreId}>
-            Generate slots
-          </Button>
+                {c.name}
+                {!c.is_active && ' (inactive)'}
+              </button>
+            ))}
+          </div>
+          {centre && (
+            <div className="stack gap-4">
+              <CentreSummary centre={centre} />
+              <HoursEditor
+                key={centre.id}
+                providerId={clinicId}
+                centre={centre}
+                canEdit={isOwner}
+              />
+              <Dentists providerId={clinicId} centre={centre} canEdit={isOwner} />
+            </div>
+          )}
+        </>
+      )}
+      <AddCentre
+        providerId={clinicId}
+        open={adding}
+        onClose={() => setAdding(false)}
+        onAdded={setSelected}
+      />
+    </>
+  );
+}
+
+function CentreSummary({ centre }: { centre: Centre }) {
+  return (
+    <Card>
+      <div className="card-head">
+        <div>
+          <h2>{centre.name}</h2>
+          <div className="muted">
+            {centre.address_line}, {centre.city}, {centre.state} {centre.postal_code}
+            {centre.phone && ` · ${centre.phone}`}
+          </div>
         </div>
+        <Pill tone={centre.is_active ? 'green' : 'grey'}>
+          {centre.is_active ? 'Taking bookings' : 'Inactive'}
+        </Pill>
       </div>
+      <p className="hint">
+        Patients searching in <strong>{centre.city}</strong> see this centre first, then others in{' '}
+        {centre.state}.
+      </p>
+    </Card>
+  );
+}
 
-      <div className="grid col-2 gap-4">
-        <Card>
-          <h3 className="mb-2">Operating schedule</h3>
-          {selectedCentreId === null ? (
-            <EmptyState title="Select a centre">
-              Pick a centre above to view and edit its operating hours.
-            </EmptyState>
-          ) : schedulesLoading ? (
-            <p>Loading schedule…</p>
-          ) : schedules.length === 0 ? (
-            <EmptyState title="No operating hours configured">
-              Use “Edit hours” to set opening times for this centre.
-            </EmptyState>
-          ) : (
-            <div className="table-wrap">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Day</th>
-                    <th>Hours</th>
-                    <th>Slot duration</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {schedules.map((s) => (
-                    <tr key={s.id}>
-                      <td>{DAYS[s.day_of_week]}</td>
-                      <td>
-                        {s.open_time} – {s.close_time}
-                      </td>
-                      <td>{s.slot_duration_minutes} min</td>
-                      <td>
-                        <Pill tone={s.is_active ? 'green' : 'grey'}>
-                          {s.is_active ? 'Active' : 'Closed'}
-                        </Pill>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Card>
+function HoursEditor({
+  providerId,
+  centre,
+  canEdit,
+}: {
+  providerId: number;
+  centre: Centre;
+  canEdit: boolean;
+}) {
+  const queryClient = useQueryClient();
+  const saved = useQuery({
+    queryKey: ['schedules', providerId, centre.id],
+    queryFn: () => api.providerSchedulesByCentre(providerId, centre.id),
+  });
+  const [edits, setEdits] = useState<DayHours[] | null>(null);
+  const days = edits ?? toDays(saved.data?.data ?? []);
+  const update = (d: number, patch: Partial<DayHours>) =>
+    setEdits(days.map((x) => (x.day_of_week === d ? { ...x, ...patch } : x)));
 
-        <Card>
-          <h3 className="mb-2">Upcoming bookable slots</h3>
-          {selectedCentreId === null ? (
-            <EmptyState title="Select a centre">
-              Pick a centre above to view its generated slots.
-            </EmptyState>
-          ) : slotsLoading ? (
-            <p>Loading slots…</p>
-          ) : slots.length === 0 ? (
-            <EmptyState title="No slots generated">
-              Generate slots from your schedule so patients can pick real appointment times.
-            </EmptyState>
-          ) : (
-            <div className="table-wrap" style={{ maxHeight: '420px', overflowY: 'auto' }}>
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Time (Lagos)</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {slots.slice(0, 50).map((slot) => {
-                    const meta = slotStatus[slot.status];
-                    return (
-                      <tr key={slot.id}>
-                        <td>{formatDateTime(slot.start_time)}</td>
-                        <td>
-                          <Pill tone={meta.tone}>{meta.label}</Pill>
-                        </td>
-                        <td>
-                          {slot.status === 'available' && (
-                            <Button
-                              variant="ghost"
-                              onClick={() => cancelSlot.mutate(slot.id)}
-                              busy={cancelSlot.isPending}
-                            >
-                              Cancel
-                            </Button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Card>
-      </div>
+  const save = useMutation({
+    mutationFn: () =>
+      api.setProviderSchedules(
+        providerId,
+        centre.id,
+        days
+          .filter((d) => d.open)
+          .map((d) => ({
+            day_of_week: d.day_of_week,
+            open_time: d.open_time,
+            close_time: d.close_time,
+            slot_duration_minutes: d.slot_duration_minutes,
+            is_active: true,
+          })),
+      ),
+    onSuccess: () => {
+      setEdits(null);
+      void queryClient.invalidateQueries({ queryKey: ['schedules', providerId, centre.id] });
+    },
+  });
+  const invalid = days.some((d) => d.open && d.close_time <= d.open_time);
+  const noneOpen = !days.some((d) => d.open);
 
-      <Modal
-        open={generateOpen}
-        title="Generate appointment slots"
-        onClose={() => setGenerateOpen(false)}
-      >
+  return (
+    <Card>
+      <h2 className="mb-2">Opening hours</h2>
+      {saved.isPending ? (
+        <Spinner />
+      ) : (
         <form
-          className="form"
           onSubmit={(e: FormEvent) => {
             e.preventDefault();
-            generate.mutate();
+            save.mutate();
           }}
         >
-          <p className="hint">
-            Generates slots according to this clinic&apos;s active weekly schedule.
-          </p>
-          <div className="form-grid">
-            <Field label="Start date">
-              <input
-                type="date"
-                required
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-              />
-            </Field>
-            <Field label="End date">
-              <input
-                type="date"
-                required
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-              />
-            </Field>
-          </div>
-          <ErrorNote error={generate.error} />
-          <div className="btn-row">
-            <Button variant="ghost" onClick={() => setGenerateOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" busy={generate.isPending}>
-              Generate slots
-            </Button>
-          </div>
-        </form>
-      </Modal>
-
-      <Modal open={editOpen} title="Set operating hours" onClose={() => setEditOpen(false)}>
-        <form
-          className="form"
-          onSubmit={(e: FormEvent) => {
-            e.preventDefault();
-            setSchedules.mutate();
-          }}
-        >
-          <p className="hint">
-            Set open/close times and slot duration for each day. Inactive days won&apos;t generate
-            slots.
-          </p>
           <div className="table-wrap">
-            <table className="table">
+            <table className="hours-table">
               <thead>
                 <tr>
                   <th>Day</th>
+                  <th>Open</th>
                   <th>Opens</th>
                   <th>Closes</th>
-                  <th>Slot (min)</th>
-                  <th>Active</th>
+                  <th>Appointment length</th>
                 </tr>
               </thead>
               <tbody>
-                {daySchedules.map((d) => (
+                {days.map((d) => (
                   <tr key={d.day_of_week}>
                     <td>{DAYS[d.day_of_week]}</td>
                     <td>
-                      <Field label="Open time" className="span-1">
-                        <input
-                          type="time"
-                          required
-                          value={d.open_time}
-                          onChange={(e) => updateDay(d.day_of_week, 'open_time', e.target.value)}
-                        />
-                      </Field>
+                      <input
+                        type="checkbox"
+                        aria-label={`Open on ${DAYS[d.day_of_week]}`}
+                        disabled={!canEdit}
+                        checked={d.open}
+                        onChange={(e) => update(d.day_of_week, { open: e.target.checked })}
+                      />
                     </td>
                     <td>
-                      <Field label="Close time" className="span-1">
-                        <input
-                          type="time"
-                          required
-                          value={d.close_time}
-                          onChange={(e) => updateDay(d.day_of_week, 'close_time', e.target.value)}
-                        />
-                      </Field>
+                      <input
+                        type="time"
+                        step={900}
+                        aria-label={`${DAYS[d.day_of_week]} opens`}
+                        disabled={!canEdit || !d.open}
+                        value={d.open_time}
+                        onChange={(e) => update(d.day_of_week, { open_time: e.target.value })}
+                      />
                     </td>
                     <td>
-                      <Field label="Duration" className="span-1">
-                        <input
-                          type="number"
-                          required
-                          min="5"
-                          max="480"
-                          step="5"
-                          value={d.slot_duration_minutes}
-                          onChange={(e) =>
-                            updateDay(
-                              d.day_of_week,
-                              'slot_duration_minutes',
-                              Number(e.target.value),
-                            )
-                          }
-                        />
-                      </Field>
+                      <input
+                        type="time"
+                        step={900}
+                        aria-label={`${DAYS[d.day_of_week]} closes`}
+                        disabled={!canEdit || !d.open}
+                        value={d.close_time}
+                        onChange={(e) => update(d.day_of_week, { close_time: e.target.value })}
+                      />
                     </td>
                     <td>
-                      <label className="check">
-                        <input
-                          type="checkbox"
-                          checked={d.is_active}
-                          onChange={(e) => updateDay(d.day_of_week, 'is_active', e.target.checked)}
-                        />
-                        {d.is_active ? 'Active' : 'Closed'}
-                      </label>
+                      <select
+                        aria-label={`${DAYS[d.day_of_week]} appointment length`}
+                        disabled={!canEdit || !d.open}
+                        value={d.slot_duration_minutes}
+                        onChange={(e) =>
+                          update(d.day_of_week, { slot_duration_minutes: Number(e.target.value) })
+                        }
+                      >
+                        {SLOT_LENGTHS.map((m) => (
+                          <option key={m} value={m}>
+                            {m} min
+                          </option>
+                        ))}
+                      </select>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <ErrorNote error={setSchedules.error} />
-          <div className="btn-row">
-            <Button variant="ghost" onClick={() => setEditOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" busy={setSchedules.isPending}>
-              Save hours
-            </Button>
-          </div>
+          {invalid && <Notice tone="warn">Closing time must be after opening time.</Notice>}
+          {noneOpen && <Notice tone="warn">Open at least one day so patients can book.</Notice>}
+          <ErrorNote error={save.error} />
+          {save.isSuccess && !edits && <Notice tone="success">Opening hours saved.</Notice>}
+          {canEdit ? (
+            <div className="btn-row mt-2">
+              <Button type="submit" busy={save.isPending} disabled={!edits || invalid || noneOpen}>
+                Save hours
+              </Button>
+              {edits && (
+                <Button variant="ghost" onClick={() => setEdits(null)}>
+                  Discard changes
+                </Button>
+              )}
+            </div>
+          ) : (
+            <p className="hint">Only the clinic owner can change opening hours.</p>
+          )}
         </form>
-      </Modal>
+      )}
+    </Card>
+  );
+}
 
-      <Modal
-        open={addCentreOpen}
-        title="Add operating centre"
-        onClose={() => setAddCentreOpen(false)}
-      >
+function Dentists({
+  providerId,
+  centre,
+  canEdit,
+}: {
+  providerId: number;
+  centre: Centre;
+  canEdit: boolean;
+}) {
+  const queryClient = useQueryClient();
+  const q = useQuery({
+    queryKey: ['caregivers', providerId],
+    queryFn: () => api.caregivers(providerId),
+  });
+  const [name, setName] = useState('');
+  const [role, setRole] = useState<Caregiver['role']>('dentist');
+  const add = useMutation({
+    mutationFn: () =>
+      api.createCaregiver(providerId, { centre_id: centre.id, full_name: name.trim(), role }),
+    onSuccess: () => {
+      setName('');
+      void queryClient.invalidateQueries({ queryKey: ['caregivers', providerId] });
+    },
+  });
+  const here = (q.data?.data ?? []).filter((c) => c.centre_id === centre.id);
+
+  return (
+    <Card>
+      <h2 className="mb-2">Dentists at {centre.name}</h2>
+      {q.isPending ? (
+        <Spinner />
+      ) : here.length === 0 ? (
+        <p className="muted">No one listed yet. Patients can still book the centre.</p>
+      ) : (
+        <ul className="list">
+          {here.map((c) => (
+            <li key={c.id} className="list-item">
+              <span>{c.full_name}</span>
+              <span className="badge">{titleCase(c.role)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {canEdit && (
         <form
-          className="form"
-          onSubmit={(e: FormEvent) => {
+          className="form-grid form-grid-3 mt-2"
+          aria-label="Add a dentist"
+          onSubmit={(e) => {
             e.preventDefault();
-            createCentre.mutate();
+            add.mutate();
           }}
         >
-          <p className="hint">
-            Add a new operating centre for this clinic. Each centre can have its own hours and
-            bookable slots.
-          </p>
-          <div className="form-grid">
-            <Field label="Centre name">
-              <input
-                type="text"
-                required
-                value={centreName}
-                onChange={(e) => setCentreName(e.target.value)}
-              />
-            </Field>
-            <Field label="Address line">
-              <input
-                type="text"
-                required
-                value={centreAddress}
-                onChange={(e) => setCentreAddress(e.target.value)}
-              />
-            </Field>
-            <Field label="City">
-              <input
-                type="text"
-                required
-                value={centreCity}
-                onChange={(e) => setCentreCity(e.target.value)}
-              />
-            </Field>
-            <Field label="State">
-              <input
-                type="text"
-                required
-                value={centreState}
-                onChange={(e) => setCentreState(e.target.value)}
-              />
-            </Field>
-            <Field label="Postal code">
-              <input
-                type="text"
-                required
-                value={centrePostalCode}
-                onChange={(e) => setCentrePostalCode(e.target.value)}
-              />
-            </Field>
-            <Field label="Phone (optional)">
-              <input
-                type="tel"
-                value={centrePhone}
-                onChange={(e) => setCentrePhone(e.target.value)}
-              />
-            </Field>
-          </div>
-          <ErrorNote error={createCentre.error} />
-          <div className="btn-row">
-            <Button variant="ghost" onClick={() => setAddCentreOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" busy={createCentre.isPending}>
-              Add centre
+          <Field label="Name">
+            <input required value={name} onChange={(e) => setName(e.target.value)} />
+          </Field>
+          <Field label="Role">
+            <select value={role} onChange={(e) => setRole(e.target.value as Caregiver['role'])}>
+              {(['dentist', 'specialist', 'hygienist', 'caregiver'] as const).map((r) => (
+                <option key={r} value={r}>
+                  {titleCase(r)}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <div className="btn-row" style={{ alignSelf: 'end' }}>
+            <Button type="submit" variant="secondary" busy={add.isPending}>
+              Add
             </Button>
           </div>
+          <ErrorNote error={add.error} />
         </form>
-      </Modal>
-    </div>
+      )}
+    </Card>
+  );
+}
+
+function AddCentre({
+  providerId,
+  open,
+  onClose,
+  onAdded,
+}: {
+  providerId: number;
+  open: boolean;
+  onClose: () => void;
+  onAdded: (id: number) => void;
+}) {
+  const queryClient = useQueryClient();
+  const empty = {
+    name: '',
+    address_line: '',
+    city: '',
+    state: 'Lagos',
+    postal_code: '',
+    phone: '',
+  };
+  const [f, setF] = useState(empty);
+  const set = (k: keyof typeof empty) => (e: { target: { value: string } }) =>
+    setF((x) => ({ ...x, [k]: e.target.value }));
+  const create = useMutation({
+    mutationFn: () => api.createCentre(providerId, { ...f, phone: f.phone || undefined }),
+    onSuccess: (r) => {
+      void queryClient.invalidateQueries({ queryKey: ['centres', providerId] });
+      setF(empty);
+      onAdded(r.data.id);
+      onClose();
+    },
+  });
+  return (
+    <Modal open={open} title="Add a centre" onClose={onClose}>
+      <form
+        className="form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          create.mutate();
+        }}
+      >
+        <div className="form-grid">
+          <Field label="Centre name" hint="e.g. Lekki Phase 1">
+            <input required value={f.name} onChange={set('name')} />
+          </Field>
+          <Field label="Street address">
+            <input required value={f.address_line} onChange={set('address_line')} />
+          </Field>
+          <Field label="Area / city" hint="Patients are matched by this, e.g. Ikeja">
+            <input required value={f.city} onChange={set('city')} />
+          </Field>
+          <Field label="State">
+            <input required value={f.state} onChange={set('state')} />
+          </Field>
+          <Field label="Postal code">
+            <input required value={f.postal_code} onChange={set('postal_code')} />
+          </Field>
+          <Field label="Phone (optional)">
+            <input type="tel" value={f.phone} onChange={set('phone')} />
+          </Field>
+        </div>
+        <p className="hint">Next, set its opening hours so patients can book.</p>
+        <ErrorNote error={create.error} />
+        <div className="btn-row">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" busy={create.isPending}>
+            Add centre
+          </Button>
+        </div>
+      </form>
+    </Modal>
   );
 }

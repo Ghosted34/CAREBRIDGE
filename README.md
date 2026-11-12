@@ -1,8 +1,8 @@
 # CareBridge
 
 Coordinated access to verified healthcare providers — starting with a dental-care pilot in Lagos.
-Patients submit one request, verified clinics and specialists offer to help, the patient chooses, and
-CareBridge tracks the journey from assessment to treatment and follow-up.
+Patients pick their problem and when they're free, see verified clinics near them with open times, and book;
+the clinic confirms, checks them in and records the outcome as notes (prescription, referral, follow-up).
 
 | App | Path | Stack |
 |---|---|---|

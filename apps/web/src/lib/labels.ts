@@ -1,40 +1,35 @@
 import type {
   AppointmentStatus,
   AppointmentType,
+  AreaMatch,
+  NoteType,
+  SlaCategory,
+  TimeOfDay,
   EstimateStatus,
   FeeType,
   PaymentStatus,
   ProviderRole,
   ReferralStatus,
   RequestStatus,
-  SlotStatus,
   Urgency,
   VerificationStatus,
 } from '../api/types';
 
 export type Tone = 'teal' | 'gold' | 'red' | 'grey' | 'green';
 
+/**
+ * A care request is a "visit": everything about one problem, from the first booking to the
+ * closing note. Old journey stages (assessment → in treatment) still map to "Open".
+ */
 export const requestStatus: Record<RequestStatus, { label: string; tone: Tone; hint: string }> = {
-  submitted: { label: 'Submitted', tone: 'gold', hint: 'Waiting to be matched with a provider' },
-  matching: {
-    label: 'Matching',
-    tone: 'gold',
-    hint: 'Provider is being matched to your request',
-  },
-  provider_accepted: {
-    label: 'Provider confirmed',
-    tone: 'teal',
-    hint: 'Book your first appointment',
-  },
-  assessment: { label: 'Assessment', tone: 'teal', hint: 'Your provider is assessing your needs' },
-  treatment_planned: {
-    label: 'Treatment planned',
-    tone: 'teal',
-    hint: 'A treatment plan is ready',
-  },
-  in_progress: { label: 'In treatment', tone: 'teal', hint: 'Treatment is under way' },
-  completed: { label: 'Completed', tone: 'green', hint: 'This care journey is complete' },
-  cancelled: { label: 'Cancelled', tone: 'grey', hint: 'This request was cancelled' },
+  submitted: { label: 'New', tone: 'gold', hint: 'Waiting for the clinic' },
+  matching: { label: 'New', tone: 'gold', hint: 'Waiting for the clinic' },
+  provider_accepted: { label: 'Open', tone: 'teal', hint: 'Booked with a clinic' },
+  assessment: { label: 'Open', tone: 'teal', hint: 'Under way with your clinic' },
+  treatment_planned: { label: 'Open', tone: 'teal', hint: 'Under way with your clinic' },
+  in_progress: { label: 'Open', tone: 'teal', hint: 'Under way with your clinic' },
+  completed: { label: 'Closed', tone: 'green', hint: 'Your clinic closed this visit' },
+  cancelled: { label: 'Cancelled', tone: 'grey', hint: 'This visit was cancelled' },
 };
 
 export const appointmentStatus: Record<
@@ -42,9 +37,9 @@ export const appointmentStatus: Record<
   { label: string; tone: Tone; hint?: string }
 > = {
   requested: {
-    label: 'Pending provider',
+    label: 'Awaiting clinic',
     tone: 'gold',
-    hint: 'Provider needs to confirm your booking',
+    hint: 'The clinic needs to confirm this booking',
   },
   booked: { label: 'Booked', tone: 'gold' },
   confirmed: { label: 'Confirmed', tone: 'teal' },
@@ -107,23 +102,61 @@ export const paymentStatus: Record<PaymentStatus, { label: string; tone: Tone }>
   refunded: { label: 'Refunded', tone: 'grey' },
 };
 
-export const slotStatus: Record<SlotStatus, { label: string; tone: Tone }> = {
-  available: { label: 'Available', tone: 'green' },
-  held: { label: 'Reserved', tone: 'gold' },
-  booked: { label: 'Booked', tone: 'teal' },
-  cancelled: { label: 'Cancelled', tone: 'grey' },
+export const slaCategory: Record<SlaCategory, { label: string; tone: Tone; hint: string }> = {
+  request_unconfirmed_breach: {
+    label: 'Unconfirmed > 2h',
+    tone: 'red',
+    hint: 'Booking request still waiting for the clinic',
+  },
+  request_unconfirmed_warning: {
+    label: 'Unconfirmed > 1h',
+    tone: 'gold',
+    hint: 'Booking request still waiting for the clinic',
+  },
+  visit_not_recorded: {
+    label: 'Not checked in',
+    tone: 'gold',
+    hint: 'Appointment time passed; no check-in or no-show recorded',
+  },
+  notes_missing: {
+    label: 'No notes > 24h',
+    tone: 'gold',
+    hint: 'Patient checked in but the visit has no outcome yet',
+  },
 };
 
-export const slaCategory: Record<
-  'unmatched_breach' | 'unmatched_warning' | 'unbooked_delay' | 'clinical_stalled' | 'standard',
-  { label: string; tone: Tone }
-> = {
-  unmatched_breach: { label: 'SLA Breached (>2h)', tone: 'red' },
-  unmatched_warning: { label: 'SLA Warning (>1h)', tone: 'gold' },
-  unbooked_delay: { label: 'Unbooked (>24h)', tone: 'red' },
-  clinical_stalled: { label: 'Stalled (>7d)', tone: 'gold' },
-  standard: { label: 'On Track', tone: 'green' },
+export const noteType: Record<NoteType, { label: string; hint: string }> = {
+  prescription: { label: 'Prescription', hint: 'Medicines given or prescribed' },
+  referral: { label: 'Referral', hint: 'Sent for further diagnosis or a specialist' },
+  follow_up: { label: 'Follow-up', hint: 'Another appointment is needed' },
+  closing_consultancy: { label: 'Close visit', hint: 'Consultation finished; closes the visit' },
 };
+
+/** Who may write each note type (mirrors the API's NOTE_AUTHORS). */
+export const noteAuthors: Record<NoteType, ProviderRole[]> = {
+  prescription: ['owner', 'clinician'],
+  referral: ['owner', 'clinician'],
+  follow_up: ['owner', 'clinician', 'scheduler'],
+  closing_consultancy: ['owner', 'clinician', 'scheduler'],
+};
+
+export const areaMatch: Record<AreaMatch, { label: string; tone: Tone }> = {
+  same_area: { label: 'In your area', tone: 'green' },
+  same_state: { label: 'Same state', tone: 'teal' },
+  elsewhere: { label: 'Further away', tone: 'grey' },
+};
+
+export const timeOfDay: Record<TimeOfDay, string> = {
+  any: 'Any time',
+  morning: 'Morning (before 12)',
+  afternoon: 'Afternoon (12–5pm)',
+  evening: 'Evening (after 5pm)',
+};
+
+export const money = (amount: number, currency = 'NGN') =>
+  new Intl.NumberFormat('en-NG', { style: 'currency', currency, maximumFractionDigits: 0 }).format(
+    amount,
+  );
 
 export const feeType: Record<FeeType, string> = {
   consultancy: 'Consultation',

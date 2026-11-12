@@ -53,6 +53,7 @@ describe('RegisterPage', () => {
     await userEvent.type(within(facility).getByLabelText(/CAC number/), 'RC-123456');
     await userEvent.type(within(facility).getByLabelText(/Tax ID/), 'TIN-12345678-001');
     await userEvent.type(within(facility).getByLabelText('Address'), '4 Admiralty Way, Lekki');
+    await userEvent.type(within(facility).getByLabelText('City'), 'Lagos');
     await userEvent.clear(within(facility).getByLabelText(/Specialties/));
     await userEvent.type(within(facility).getByLabelText(/Specialties/), 'Oral surgery, dentistry');
 

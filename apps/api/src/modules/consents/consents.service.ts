@@ -2,6 +2,7 @@ import { pool, withTransaction, type Db } from '../../db/pool.js';
 import { audit } from '../../lib/audit.js';
 import { AppError } from '../../lib/errors.js';
 import type { Ctx } from '../../lib/http.js';
+import * as appointmentsRepo from '../appointments/appointments.repo.js';
 import * as requestsRepo from '../requests/requests.repo.js';
 import { CONSENT_TYPES, POLICIES, REQUIRED_FOR_REQUESTS, type ConsentType } from './policies.js';
 import * as repo from './consents.repo.js';
@@ -98,7 +99,7 @@ export async function decide(c: Ctx, type: ConsentType, granted: boolean, source
     );
   }
   return withTransaction(async (tx) => {
-    let withdrawnRequests: number[] = [];
+    const withdrawnRequests: number[] = [];
     if (granted) {
       await grant(tx, c.user.id, type, source, c.ip);
     } else {
@@ -112,17 +113,36 @@ export async function decide(c: Ctx, type: ConsentType, granted: boolean, source
         ip: c.ip,
       });
       if (type === 'data_sharing' && c.user.role === 'patient') {
-        withdrawnRequests = await requestsRepo.openIdsForPatient(tx, c.user.id);
-        for (const id of withdrawnRequests) {
-          await requestsRepo.setStatus(tx, id, 'cancelled');
+        // Booking requests the clinic hasn't confirmed are withdrawn (we may no longer share them);
+        // confirmed bookings go ahead — the clinic already has what it needs for the visit.
+        const pending = await appointmentsRepo.requestedForPatient(tx, c.user.id);
+        for (const a of pending) {
+          await appointmentsRepo.setStatus(tx, a.id, 'cancelled');
           await audit(tx, {
             actorUserId: c.user.id,
-            action: 'CARE_REQUEST_CANCELLED',
-            entityType: 'care_request',
-            entityId: id,
+            action: 'APPOINTMENT_CANCELLED',
+            entityType: 'appointment',
+            entityId: a.id,
             ip: c.ip,
             metadata: { reason: 'data_sharing_consent_revoked' },
           });
+        }
+        // A visit left with nothing booked and never seen is withdrawn too.
+        for (const visitId of new Set(pending.map((a) => a.care_request_id))) {
+          const active = await appointmentsRepo.countActiveForRequest(tx, visitId);
+          const seen = await appointmentsRepo.countSeenForRequest(tx, visitId);
+          if (active === 0 && seen === 0) {
+            await requestsRepo.setStatus(tx, visitId, 'cancelled');
+            await audit(tx, {
+              actorUserId: c.user.id,
+              action: 'CARE_REQUEST_CANCELLED',
+              entityType: 'care_request',
+              entityId: visitId,
+              ip: c.ip,
+              metadata: { reason: 'data_sharing_consent_revoked' },
+            });
+            withdrawnRequests.push(visitId);
+          }
         }
       }
       await audit(tx, {

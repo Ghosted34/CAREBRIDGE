@@ -1,5 +1,6 @@
-// CareBridge Service Worker (PWA)
-const CACHE_NAME = 'carebridge-pwa-v1';
+// CareLynk service worker (PWA).
+// Bump CACHE_NAME when caching rules change: old caches are deleted on activate.
+const CACHE_NAME = 'carelynk-pwa-v2';
 const PRECACHE_ASSETS = ['/', '/index.html', '/icon.svg', '/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {
@@ -44,7 +45,23 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Stale-while-revalidate for static assets / navigation
+  // Page loads: network first, so a new deploy shows at once; the cached page only when offline.
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then((res) => {
+          if (res && res.status === 200) {
+            const copy = res.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put('/index.html', copy));
+          }
+          return res;
+        })
+        .catch(() => caches.match('/index.html')),
+    );
+    return;
+  }
+
+  // Stale-while-revalidate for static assets (their file names change with each build)
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       const fetchPromise = fetch(event.request)

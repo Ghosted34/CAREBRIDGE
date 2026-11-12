@@ -1071,3 +1071,165 @@ th {
 .list li:last-child .notice-row {
   border-bottom: 0;
 }
+
+/* ---------- search & booking ---------- */
+.form-grid-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.period-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  gap: 14px;
+  align-items: end;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed var(--line);
+}
+.result-card .card-head h3 {
+  margin: 0;
+}
+.result-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: 13.5px;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+.time-days {
+  display: grid;
+  gap: 10px;
+}
+.time-day {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 10px;
+  align-items: start;
+}
+.time-day-label {
+  font-size: 13px;
+  font-weight: 650;
+  padding-top: 6px;
+}
+.time-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.time-chip {
+  font: inherit;
+  font-size: 13.5px;
+  font-variant-numeric: tabular-nums;
+  padding: 5px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+}
+.time-chip:hover {
+  border-color: var(--teal);
+}
+.time-chip[aria-pressed='true'] {
+  background: var(--teal);
+  border-color: var(--teal);
+  color: #fff;
+}
+.time-chip:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+.confirm-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 18px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--teal-soft);
+}
+.confirm-card {
+  border: 2px solid var(--teal);
+}
+.notes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.note {
+  border-left: 3px solid var(--teal);
+  padding: 4px 0 4px 12px;
+}
+.note-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.note-body {
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+}
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.tab {
+  font: inherit;
+  font-size: 14px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  cursor: pointer;
+}
+.tab[aria-pressed='true'] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #fff;
+}
+.hours-table input[type='time'] {
+  min-width: 110px;
+}
+@media (max-width: 720px) {
+  .form-grid-3,
+  .period-row {
+    grid-template-columns: 1fr;
+  }
+  .time-day {
+    grid-template-columns: 1fr;
+  }
+}
+.mt-4 {
+  margin-top: 24px;
+}
+.link-btn {
+  font: inherit;
+  color: var(--teal);
+  background: none;
+  border: 0;
+  padding: 0;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.form fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.form legend {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 6px;
+  padding: 0;
+}
+.mt-2 {
+  margin-top: 12px;
+}
+.notice + .tabs {
+  margin-top: 14px;
+}

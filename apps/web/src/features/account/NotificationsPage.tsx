@@ -27,7 +27,7 @@ export function NotificationsPage() {
     <>
       <PageHeader
         title="Notifications"
-        subtitle="Updates about your requests, offers and appointments."
+        subtitle="Updates about your bookings, appointments and visit notes."
         actions={
           unread > 0 && (
             <Button variant="ghost" busy={readAll.isPending} onClick={() => readAll.mutate()}>
