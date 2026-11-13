@@ -5,7 +5,7 @@ export const docsRouter = Router();
 export const openapiSpec = {
   openapi: '3.1.0',
   info: {
-    title: 'CareLynk API',
+    title: 'OnDiGoH API',
     version: '0.2.0',
     description:
       'Find a verified dental clinic near you with free time when you are free, send a booking request, and keep the visit record (check-in and post-visit notes). Lagos pilot.',
@@ -259,7 +259,7 @@ docsRouter.get('/docs', (_req, res) => {
   res.send(`<!DOCTYPE html>
 <html>
 <head>
-  <title>CareLynk API Documentation</title>
+  <title>OnDiGoH API Documentation</title>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />

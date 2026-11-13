@@ -47,7 +47,7 @@ async function main() {
   await autoMigrate();
 
   const server = createApp().listen(env.PORT, () => {
-    logger.info({ port: env.PORT, env: env.NODE_ENV }, 'CareLynk API listening');
+    logger.info({ port: env.PORT, env: env.NODE_ENV }, 'OnDiGoH API listening');
   });
 
   // Single-process hosts (cPanel): send queued SMS/email from this process too.

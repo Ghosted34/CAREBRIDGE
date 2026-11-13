@@ -93,7 +93,7 @@ describe('TeamPage', () => {
     mockApi({ 'GET /providers/3/team': { body: { data: team } } });
     render(pendingClinic);
     expect(
-      await screen.findByText(/awaiting CareLynk verification\.\s*Team management unlocks/i),
+      await screen.findByText(/awaiting OnDiGoH verification\.\s*Team management unlocks/i),
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Add to team' })).not.toBeInTheDocument();
   });

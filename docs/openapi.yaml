@@ -2,7 +2,7 @@
 # Edit docs.routes.ts, not this file. Full endpoint reference: docs/api.md.
 openapi: 3.1.0
 info:
-  title: CareLynk API
+  title: OnDiGoH API
   version: 0.2.0
   description: Find a verified dental clinic near you with free time when you are free, send a booking request,
     and keep the visit record (check-in and post-visit notes). Lagos pilot.

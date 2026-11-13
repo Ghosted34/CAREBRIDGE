@@ -8,7 +8,7 @@ export const smtp = defineProvider({
   description: 'Email via an SMTP server',
   config: z.object({
     SMTP_URL: z.string().regex(/^smtps?:\/\//, 'SMTP_URL must start with smtp:// or smtps://'),
-    EMAIL_FROM: z.string().min(3).default('CareLynk <no-reply@carebridge.local>'),
+    EMAIL_FROM: z.string().min(3).default('OnDiGoH <no-reply@carebridge.local>'),
   }),
   create(config) {
     const transport = nodemailer.createTransport(config.SMTP_URL);

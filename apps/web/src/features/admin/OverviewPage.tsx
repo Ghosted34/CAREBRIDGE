@@ -18,7 +18,7 @@ export function OverviewPage() {
 
   return (
     <>
-      <PageHeader title="Operations overview" subtitle="Live counts across the CareLynk network." />
+      <PageHeader title="Operations overview" subtitle="Live counts across the OnDiGoH network." />
       <div className="grid grid-4">
         <Stat
           label="Open requests"

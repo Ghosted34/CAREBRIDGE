@@ -1,6 +1,6 @@
-# CareLynk Deployment — Single Origin (Web + API)
+# OnDiGoH Deployment — Single Origin (Web + API)
 
-CareLynk deploys as a **single Node.js application**: the API (Express) serves
+OnDiGoH deploys as a **single Node.js application**: the API (Express) serves
 both the REST API under `/api/v1/*` and the built React web app for all other
 routes. This works on cPanel (via "Setup Node.js App") or any Node host.
 

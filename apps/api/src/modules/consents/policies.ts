@@ -25,7 +25,7 @@ export const POLICIES: Record<ConsentType, Policy> = {
     version: '2026-11-01',
     title: 'Terms of use',
     summary:
-      'CareLynk helps you find and coordinate care with verified providers. It is not an emergency service and does not give medical advice; clinical decisions are made by licensed professionals.',
+      'OnDiGoH helps you find and coordinate care with verified providers. It is not an emergency service and does not give medical advice; clinical decisions are made by licensed professionals.',
     requiredAtRegistration: true,
     requiredForRequests: true,
   },
@@ -52,7 +52,7 @@ export const POLICIES: Record<ConsentType, Policy> = {
     version: '2026-11-01',
     title: 'Updates and offers',
     summary:
-      'Occasional news about CareLynk services. Optional — you can turn this off at any time.',
+      'Occasional news about OnDiGoH services. Optional — you can turn this off at any time.',
     requiredAtRegistration: false,
     requiredForRequests: false,
   },

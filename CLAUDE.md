@@ -4,7 +4,7 @@ Guidance for AI coding sessions in this repo. **Read `docs/CONVENTIONS.md` first
 All documentation lives in `docs/` (index: `docs/README.md`).
 
 ## What this is
-CareBridge (branded **CareLynk** in the UI): dental care coordination, Lagos pilot. A patient picks a problem
+CareBridge (branded **OnDiGoH** in the UI): dental care coordination, Lagos pilot. A patient picks a problem
 and the periods they're free; `POST /search` shows verified clinics' centres near them that treat it, with free
 times computed from opening hours minus bookings; the patient books one; the clinic confirms, checks them in and
 adds notes (prescription, referral, follow-up, closing). A care request is a "visit". The old offer round,

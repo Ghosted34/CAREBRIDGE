@@ -106,7 +106,7 @@ re-checks the exact time, so two people can't book the same one.
 | `GET /centres/:centreId/availability` | signed in | `from_date, to_date, time_of_day?` | free times at one centre (used for follow-ups) |
 | `POST /appointments` | patient; clinic staff for follow-ups | **new visit:** `centre_id, starts_at, problem, has_emergency_symptoms, details?, appointment_mode?: physical\|remote, caregiver_id?` · **follow-up:** `centre_id, starts_at, care_request_id, appointment_mode?, caregiver_id?` | `starts_at` must be one of the centre's free times (`409 SLOT_UNAVAILABLE`); the end comes from the appointment length. New visit: `has_emergency_symptoms: true` → `422 EMERGENCY_REDIRECT`, nothing stored; the clinic must treat the problem (`409 NOT_A_MATCH`). Follow-up: same clinic (`409 OTHER_PROVIDER`), visit still open (`409 REQUEST_CLOSED`). A patient's booking is `requested`; a follow-up the clinic books itself is `confirmed` |
 
-`appointment_mode: remote` means a video/voice call the clinic arranges outside CareLynk; the system only records
+`appointment_mode: remote` means a video/voice call the clinic arranges outside OnDiGoH; the system only records
 that it happened and its notes.
 
 ## Visits (care requests)

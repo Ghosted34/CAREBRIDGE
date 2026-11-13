@@ -52,7 +52,7 @@ export function LoginPage() {
           </Button>
         </form>
         <p className="muted small" style={{ marginTop: 14 }}>
-          New to CareLynk? <Link to="/register">Create an account</Link>
+          New to OnDiGoH? <Link to="/register">Create an account</Link>
         </p>
       </Card>
       {import.meta.env.DEV && (

@@ -9,7 +9,7 @@ export function PoliciesPage() {
     <>
       <PageHeader
         title="Terms & privacy"
-        subtitle="What you agree to when you use CareLynk, in plain language."
+        subtitle="What you agree to when you use OnDiGoH, in plain language."
       />
       {q.isPending ? (
         <Spinner />

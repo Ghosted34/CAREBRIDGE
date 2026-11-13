@@ -18,7 +18,7 @@ export function ProvidersPage() {
     <>
       <PageHeader
         title="Verified providers"
-        subtitle="Every provider listed has been checked by CareLynk. Found the right one? Send
+        subtitle="Every provider listed has been checked by OnDiGoH. Found the right one? Send
           your request straight to them."
       />
       <Card>

@@ -203,11 +203,11 @@ export function PageHeader({
   subtitle?: ReactNode;
   actions?: ReactNode;
 }) {
-  // Browser tab: "Bookings · CareLynk".
+  // Browser tab: "Bookings · OnDiGoH".
   useEffect(() => {
-    document.title = `${title} · CareLynk`;
+    document.title = `${title} · OnDiGoH`;
     return () => {
-      document.title = 'CareLynk';
+      document.title = 'OnDiGoH';
     };
   }, [title]);
   return (

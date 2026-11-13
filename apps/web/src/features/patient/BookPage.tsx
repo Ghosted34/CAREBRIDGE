@@ -349,9 +349,7 @@ function ConfirmBooking({
           <legend>How will you be seen?</legend>
           <ModeChoice value={mode} onChange={setMode} name="mode" />
           {mode === 'remote' && (
-            <p className="hint">
-              The clinic will call you; CareLynk only records that it happened.
-            </p>
+            <p className="hint">The clinic will call you; OnDiGoH only records that it happened.</p>
           )}
         </fieldset>
         {result.caregivers.length > 0 && (

@@ -1,5 +1,5 @@
 /**
- * Create (or re-activate) a CareLynk admin — the only way the first admin exists, since sign-up
+ * Create (or re-activate) a OnDiGoH admin — the only way the first admin exists, since sign-up
  * offers patient and clinic accounts only. Safe in production; idempotent by email.
  *
  *   ADMIN_EMAIL=… ADMIN_NAME=… ADMIN_PHONE=… ADMIN_PASSWORD=… npm run admin:create

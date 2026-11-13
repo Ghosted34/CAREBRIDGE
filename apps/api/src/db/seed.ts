@@ -38,7 +38,7 @@ type CaregiverRole = 'dentist' | 'caregiver' | 'hygienist' | 'specialist';
 // ---------------------------------------------------------------- data (as entered in staging)
 
 const ADMIN = {
-  full_name: 'CareLynk Admin',
+  full_name: 'OnDiGoH Admin',
   email: 'admin@carebridge.local',
   phone: '+2348000000001',
 };
@@ -47,7 +47,7 @@ const ADMIN = {
  * everything operators can). Kept so the demo has an operator login.
  */
 const OPERATOR = {
-  full_name: 'CareLynk Operator',
+  full_name: 'OnDiGoH Operator',
   email: 'operator@carebridge.local',
   phone: '+2348000000002',
 };

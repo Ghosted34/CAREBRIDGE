@@ -1,5 +1,5 @@
 /**
- * Response shapes of the CareLynk API (/api/v1). Hand-maintained: when an API response changes,
+ * Response shapes of the OnDiGoH API (/api/v1). Hand-maintained: when an API response changes,
  * update the type here in the same PR (see docs/CONVENTIONS.md §Web).
  */
 export type Role = 'patient' | 'provider_staff' | 'operator' | 'admin';
@@ -164,7 +164,7 @@ export interface ProviderMember {
   created_at: string;
 }
 
-/** Roles a clinic owner can appoint themselves; `owner` is granted by CareLynk. */
+/** Roles a clinic owner can appoint themselves; `owner` is granted by OnDiGoH. */
 export type TeamRole = 'clinician' | 'scheduler' | 'receptionist';
 
 /** A provider-staff account a clinic owner may invite (contact details only). */

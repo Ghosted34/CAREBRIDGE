@@ -45,7 +45,7 @@ export function createApp() {
   );
 
   app.get('/health', (_req, res) => {
-    res.json({ status: 'ok', service: 'CareLynk API' });
+    res.json({ status: 'ok', service: 'OnDiGoH API' });
   });
 
   const v1 = Router();

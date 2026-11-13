@@ -53,8 +53,8 @@ export async function processBatch(
           subject: msg.title,
           text:
             channel === 'sms'
-              ? (msg.sms ?? `CareLynk: ${msg.title}. Open the app for details.`)
-              : `${msg.body}\n\nOpen CareLynk: ${link}`,
+              ? (msg.sms ?? `OnDiGoH: ${msg.title}. Open the app for details.`)
+              : `${msg.body}\n\nOpen OnDiGoH: ${link}`,
         });
         await repo.markSent(tx, n.id, provider.name, sent.providerMessageId ?? null);
         result.sent++;

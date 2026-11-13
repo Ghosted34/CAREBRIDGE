@@ -71,7 +71,7 @@ export async function request<T>(method: Method, path: string, body?: unknown): 
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
-    throw new ApiError(0, 'NETWORK', 'Cannot reach CareLynk. Check your connection and try again.');
+    throw new ApiError(0, 'NETWORK', 'Cannot reach OnDiGoH. Check your connection and try again.');
   }
 
   const json = await res.json().catch(() => null);

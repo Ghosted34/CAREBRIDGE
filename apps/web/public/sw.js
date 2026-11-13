@@ -1,6 +1,6 @@
-// CareLynk service worker (PWA).
+// OnDiGoH service worker (PWA).
 // Bump CACHE_NAME when caching rules change: old caches are deleted on activate.
-const CACHE_NAME = 'carelynk-pwa-v2';
+const CACHE_NAME = 'ondigoh-pwa-v3';
 const PRECACHE_ASSETS = ['/', '/index.html', '/icon.svg', '/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {

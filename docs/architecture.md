@@ -1,10 +1,10 @@
 # Architecture
 
-CareBridge (branded CareLynk in the app) is a coordination layer between patients and existing dental
+CareBridge (branded OnDiGoH in the app) is a coordination layer between patients and existing dental
 capacity in Lagos. It does not run clinics or the consultation itself: it shows a patient verified clinics near
 them with real free times, books one, and records what happened — check-in, and the clinic's notes
 (prescription, referral, follow-up, closing). Consultations can be in person or by video/voice call arranged
-by the clinic; CareLynk only needs to know it happened.
+by the clinic; OnDiGoH only needs to know it happened.
 
 ## Components
 

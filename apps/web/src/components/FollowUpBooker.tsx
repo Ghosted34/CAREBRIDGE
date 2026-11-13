@@ -90,7 +90,7 @@ export function FollowUpBooker({
   );
 }
 
-/** In person or remote (video/voice). The call itself happens outside CareLynk. */
+/** In person or remote (video/voice). The call itself happens outside OnDiGoH. */
 export function ModeChoice({
   value,
   onChange,

@@ -33,7 +33,7 @@ export function PrivacyPage() {
         title="Privacy & consent"
         subtitle={
           <>
-            Your choices about how CareLynk uses your information. Full summaries:{' '}
+            Your choices about how OnDiGoH uses your information. Full summaries:{' '}
             <Link to="/policies">terms & privacy</Link>.
           </>
         }

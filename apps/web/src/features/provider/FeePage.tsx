@@ -127,7 +127,7 @@ export function FeePage() {
       />
       {clinic.verification_status !== 'verified' ? (
         <Notice tone="warn">
-          Your facility is awaiting CareLynk verification. Fee management unlocks as soon as it is
+          Your facility is awaiting OnDiGoH verification. Fee management unlocks as soon as it is
           verified.
         </Notice>
       ) : (
